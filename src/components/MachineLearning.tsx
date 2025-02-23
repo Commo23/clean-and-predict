@@ -104,6 +104,10 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
     return numerator / (xDev * yDev);
   };
 
+  const calculateMean = (arr: number[]): number => {
+    return arr.reduce((a, b) => a + b, 0) / arr.length;
+  };
+
   const checkStationarity = () => {
     if (!data || !targetColumn) return;
 
@@ -116,7 +120,7 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
 
     for (let i = 0; i < values.length - windowSize; i += windowSize) {
       const window = values.slice(i, i + windowSize);
-      const mean = window.reduce((a, b) => a + b, 0) / windowSize;
+      const mean = calculateMean(window);
       means.push(mean);
       const variance = window.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / windowSize;
       variances.push(variance);
@@ -124,9 +128,10 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
 
     const meanVariation = Math.max(...means) - Math.min(...means);
     const varianceVariation = Math.max(...variances) - Math.min(...variances);
+    const meanOfMeans = calculateMean(means);
 
     setStationarityTest({
-      isStationary: meanVariation < 0.1 * Math.mean(means) && varianceVariation < 0.1 * Math.mean(variances),
+      isStationary: meanVariation < 0.1 * meanOfMeans && varianceVariation < 0.1 * calculateMean(variances),
       meanVariation,
       varianceVariation,
       means,
@@ -454,28 +459,30 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <h4 className="font-medium mb-2">Basic Statistics</h4>
-                  <dl className="space-y-1">
-                    <div className="flex justify-between">
-                      <dt className="text-gray-600">Mean:</dt>
-                      <dd>{stats.mean.toFixed(4)}</dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-gray-600">Median:</dt>
-                      <dd>{stats.median.toFixed(4)}</dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-gray-600">Std Dev:</dt>
-                      <dd>{stats.std.toFixed(4)}</dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-gray-600">Min:</dt>
-                      <dd>{stats.min.toFixed(4)}</dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-gray-600">Max:</dt>
-                      <dd>{stats.max.toFixed(4)}</dd>
-                    </div>
-                  </dl>
+                  {stats && (
+                    <dl className="space-y-1">
+                      <div className="flex justify-between">
+                        <dt className="text-gray-600">Mean:</dt>
+                        <dd>{stats.mean.toFixed(4)}</dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-gray-600">Median:</dt>
+                        <dd>{stats.median.toFixed(4)}</dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-gray-600">Std Dev:</dt>
+                        <dd>{stats.std.toFixed(4)}</dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-gray-600">Min:</dt>
+                        <dd>{stats.min.toFixed(4)}</dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-gray-600">Max:</dt>
+                        <dd>{stats.max.toFixed(4)}</dd>
+                      </div>
+                    </dl>
+                  )}
                 </div>
               </div>
             </Card>
