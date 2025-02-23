@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -62,26 +62,27 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
   const [stationarityTest, setStationarityTest] = useState<any>(null);
   const [showHistorical, setShowHistorical] = useState(true);
 
-  const columns = data ? Object.keys(data[0] || {}) : [];
+  const columns = useMemo(() => {
+    if (!data || data.length === 0) return [];
+    return Object.keys(data[0]);
+  }, [data]);
 
-  const calculateCorrelations = () => {
-    if (!data || !targetColumn) return;
+  const calculateStats = useCallback((values: number[]) => {
+    const sorted = [...values].sort((a, b) => a - b);
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    const median = sorted[Math.floor(sorted.length / 2)];
+    const std = Math.sqrt(
+      values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length
+    );
 
-    const correlations: {[key: string]: number} = {};
-    const targetValues = data.map(row => parseFloat(row[targetColumn]));
-
-    columns.forEach(column => {
-      if (column === targetColumn) return;
-      const columnValues = data.map(row => parseFloat(row[column]));
-      
-      const correlation = calculatePearsonCorrelation(targetValues, columnValues);
-      if (!isNaN(correlation)) {
-        correlations[column] = correlation;
-      }
-    });
-
-    setCorrelations(correlations);
-  };
+    return {
+      mean,
+      median,
+      std,
+      min: Math.min(...values),
+      max: Math.max(...values),
+    };
+  }, []);
 
   const calculatePearsonCorrelation = (x: number[], y: number[]) => {
     const mean = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
@@ -186,22 +187,41 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
     });
   };
 
-  const calculateStats = (values: number[]) => {
-    const sorted = values.sort((a, b) => a - b);
-    const mean = values.reduce((a, b) => a + b, 0) / values.length;
-    const median = sorted[Math.floor(sorted.length / 2)];
-    const std = Math.sqrt(
-      values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length
-    );
+  const calculateCorrelations = () => {
+    if (!data || !targetColumn) return;
 
-    return {
-      mean,
-      median,
-      std,
-      min: Math.min(...values),
-      max: Math.max(...values),
-    };
+    const correlations: {[key: string]: number} = {};
+    const targetValues = data.map(row => parseFloat(row[targetColumn]));
+    
+    columns.forEach(column => {
+      if (column === targetColumn) return;
+      const columnValues = data.map(row => parseFloat(row[column]));
+      const correlation = calculatePearsonCorrelation(targetValues, columnValues);
+      if (!isNaN(correlation)) {
+        correlations[column] = correlation;
+      }
+    });
+
+    setCorrelations(correlations);
   };
+
+  const chartData = useMemo(() => {
+    if (!data || !predictions) return [];
+
+    const historicalData = data.slice(-30).map((row, index) => ({
+      date: `Historical ${index + 1}`,
+      actual: parseFloat(row[targetColumn]),
+      predicted: null
+    }));
+
+    const predictionData = predictions.map(pred => ({
+      date: pred.date,
+      actual: null,
+      predicted: pred.predicted
+    }));
+
+    return [...historicalData, ...predictionData];
+  }, [data, predictions, targetColumn]);
 
   const handleTrain = async () => {
     if (!data || !targetColumn) return;
@@ -393,10 +413,10 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
                 </div>
               </div>
               
-              {predictions && (
+              {chartData.length > 0 && (
                 <div className="h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={predictions}>
+                    <LineChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="date" />
                       <YAxis />
@@ -409,6 +429,7 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
                           stroke="#82ca9d"
                           name="Historical"
                           strokeDasharray="5 5"
+                          connectNulls
                         />
                       )}
                       <Line
@@ -416,6 +437,7 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
                         dataKey="predicted"
                         stroke="#8884d8"
                         name="Predicted"
+                        connectNulls
                       />
                     </LineChart>
                   </ResponsiveContainer>
