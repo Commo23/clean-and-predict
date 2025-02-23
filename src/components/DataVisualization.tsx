@@ -13,7 +13,7 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
-  ScatterPlot,
+  ScatterChart,
   Scatter
 } from 'recharts';
 
@@ -108,13 +108,16 @@ const DataVisualization = ({ data }: DataVisualizationProps) => {
                 <Bar dataKey="y" fill="#8884d8" />
               </BarChart>
             ) : (
-              <ScatterPlot data={chartData}>
+              <ScatterChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="x" />
                 <YAxis />
                 <Tooltip />
-                <Scatter dataKey="y" fill="#8884d8" />
-              </ScatterPlot>
+                <Scatter data={chartData} fill="#8884d8">
+                  <XAxis dataKey="x" />
+                  <YAxis dataKey="y" />
+                </Scatter>
+              </ScatterChart>
             )}
           </ResponsiveContainer>
         )}
