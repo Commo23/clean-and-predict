@@ -520,35 +520,64 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
                     </div>
                     <div className="flex justify-between">
                       <span>Mean Variation:</span>
-                      <span>{stationarityTest.meanVariation.toFixed(4)}</span>
+                      <span>{stationarityTest.meanVariation?.toFixed(4) || 'N/A'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Variance Variation:</span>
-                      <span>{stationarityTest.varianceVariation.toFixed(4)}</span>
+                      <span>{stationarityTest.varianceVariation?.toFixed(4) || 'N/A'}</span>
                     </div>
                   </div>
                 </div>
               )}
 
-              {crossValidation.length > 0 && stats?.rmse && (
+              {crossValidation.length > 0 && (
                 <div>
                   <h4 className="font-medium mb-2">Cross-Validation Results</h4>
                   <div className="space-y-1 text-sm">
                     {crossValidation.map(({ fold, rmse }) => (
                       <div key={fold} className="flex justify-between">
                         <span>Fold {fold}:</span>
-                        <span>RMSE = {rmse?.toFixed(4) || 'N/A'}</span>
+                        <span>RMSE = {typeof rmse === 'number' ? rmse.toFixed(4) : 'N/A'}</span>
                       </div>
                     ))}
                     <div className="flex justify-between font-medium pt-2 border-t">
                       <span>Average RMSE:</span>
                       <span>
                         {crossValidation.length > 0 
-                          ? (crossValidation.reduce((acc, { rmse }) => acc + (rmse || 0), 0) / crossValidation.length).toFixed(4)
+                          ? (crossValidation.reduce((acc, { rmse }) => 
+                              acc + (typeof rmse === 'number' ? rmse : 0), 
+                              0
+                            ) / crossValidation.length).toFixed(4)
                           : 'N/A'
                         }
                       </span>
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {stats && (
+                <div>
+                  <h4 className="font-medium mb-2">Model Metrics</h4>
+                  <div className="space-y-1 text-sm">
+                    {stats.rmse !== undefined && (
+                      <div className="flex justify-between">
+                        <span>RMSE:</span>
+                        <span>{stats.rmse.toFixed(4)}</span>
+                      </div>
+                    )}
+                    {stats.mae !== undefined && (
+                      <div className="flex justify-between">
+                        <span>MAE:</span>
+                        <span>{stats.mae.toFixed(4)}</span>
+                      </div>
+                    )}
+                    {stats.r2 !== undefined && (
+                      <div className="flex justify-between">
+                        <span>R²:</span>
+                        <span>{stats.r2.toFixed(4)}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
