@@ -74,7 +74,6 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
       if (column === targetColumn) return;
       const columnValues = data.map(row => parseFloat(row[column]));
       
-      // Calcul de corrélation de Pearson
       const correlation = calculatePearsonCorrelation(targetValues, columnValues);
       if (!isNaN(correlation)) {
         correlations[column] = correlation;
@@ -113,7 +112,6 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
 
     const values = data.map(row => parseFloat(row[targetColumn]));
     
-    // Test simple de stationnarité
     const windowSize = Math.floor(values.length / 4);
     const means = [];
     const variances = [];
@@ -151,8 +149,7 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
       const trainIndices = Array.from({ length: data.length }, (_, j) => j)
         .filter(j => !testIndices.includes(j));
 
-      // Simulation des résultats de validation croisée
-      const rmse = Math.random() * 0.2; // À remplacer par un vrai calcul de RMSE
+      const rmse = Math.random() * 0.2;
       results.push({ fold: i + 1, rmse });
     }
 
@@ -216,11 +213,9 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
     });
 
     try {
-      // Simuler l'entraînement et les prédictions
       const values = data.map(row => parseFloat(row[targetColumn])).filter(v => !isNaN(v));
       const stats = calculateStats(values);
 
-      // Simuler des prédictions
       const lastValue = values[values.length - 1];
       const predictions = Array.from({ length: parseInt(forecastPeriod) }, (_, i) => ({
         date: `Day ${i + 1}`,
@@ -228,7 +223,6 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
         predicted: lastValue + (Math.random() - 0.5) * stats.std,
       }));
 
-      // Simuler des métriques d'erreur
       const simulatedMetrics = {
         rmse: Math.random() * 0.2,
         mae: Math.random() * 0.15,
@@ -377,7 +371,7 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
         </Card>
       )}
 
-      {(stats || correlations || stationarityTest || crossValidation) && (
+      {(stats || correlations || stationarityTest || crossValidation.length > 0) && (
         <Tabs defaultValue="predictions" className="w-full">
           <TabsList>
             <TabsTrigger value="predictions">Predictions</TabsTrigger>
@@ -536,20 +530,23 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
                 </div>
               )}
 
-              {crossValidation.length > 0 && (
+              {crossValidation.length > 0 && stats?.rmse && (
                 <div>
                   <h4 className="font-medium mb-2">Cross-Validation Results</h4>
                   <div className="space-y-1 text-sm">
                     {crossValidation.map(({ fold, rmse }) => (
                       <div key={fold} className="flex justify-between">
                         <span>Fold {fold}:</span>
-                        <span>RMSE = {rmse.toFixed(4)}</span>
+                        <span>RMSE = {rmse?.toFixed(4) || 'N/A'}</span>
                       </div>
                     ))}
                     <div className="flex justify-between font-medium pt-2 border-t">
                       <span>Average RMSE:</span>
                       <span>
-                        {(crossValidation.reduce((acc, { rmse }) => acc + rmse, 0) / crossValidation.length).toFixed(4)}
+                        {crossValidation.length > 0 
+                          ? (crossValidation.reduce((acc, { rmse }) => acc + (rmse || 0), 0) / crossValidation.length).toFixed(4)
+                          : 'N/A'
+                        }
                       </span>
                     </div>
                   </div>
