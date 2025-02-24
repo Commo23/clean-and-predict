@@ -224,13 +224,11 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
   }, [data, predictions, targetColumn]);
 
   // Sécuriser l'accès aux métriques du modèle
-  const modelMetrics = useMemo(() => {
-    return {
-      rmse: stats?.rmse ? stats.rmse.toFixed(4) : 'N/A',
-      mae: stats?.mae ? stats.mae.toFixed(4) : 'N/A',
-      r2: stats?.r2 ? stats.r2.toFixed(4) : 'N/A'
-    };
-  }, [stats]);
+  const modelMetrics = useMemo(() => ({
+    rmse: stats?.rmse?.toFixed(4) ?? 'N/A',
+    mae: stats?.mae?.toFixed(4) ?? 'N/A',
+    r2: stats?.r2?.toFixed(4) ?? 'N/A'
+  }), [stats]);
 
   const handleTrain = async () => {
     if (!data || !targetColumn) return;
@@ -275,6 +273,14 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
       setLoading(false);
     }
   };
+
+  if (!data) {
+    return (
+      <div className="text-center text-gray-500 py-8">
+        Please upload some data to begin machine learning
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -584,29 +590,29 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
                 </div>
               )}
 
-          <div>
-            <h4 className="font-medium mb-2">Model Metrics</h4>
-            <div className="space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span>RMSE:</span>
-                <span>{modelMetrics.rmse}</span>
+              <div>
+                <h4 className="font-medium mb-2">Model Metrics</h4>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span>RMSE:</span>
+                    <span>{modelMetrics?.rmse ?? 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>MAE:</span>
+                    <span>{modelMetrics?.mae ?? 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>R²:</span>
+                    <span>{modelMetrics?.r2 ?? 'N/A'}</span>
+                  </div>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span>MAE:</span>
-                <span>{modelMetrics.mae}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>R²:</span>
-                <span>{modelMetrics.r2}</span>
-              </div>
-            </div>
-          </div>
-        </Card>
-      </TabsContent>
-    </Tabs>
-  )}
-</div>
-);
+            </Card>
+          </TabsContent>
+        </Tabs>
+      )}
+    </div>
+  );
 };
 
 export default MachineLearning;
