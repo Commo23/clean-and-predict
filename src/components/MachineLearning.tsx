@@ -223,6 +223,15 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
     return [...historicalData, ...predictionData];
   }, [data, predictions, targetColumn]);
 
+  // Sécuriser l'accès aux métriques du modèle
+  const modelMetrics = useMemo(() => {
+    return {
+      rmse: stats?.rmse ? stats.rmse.toFixed(4) : 'N/A',
+      mae: stats?.mae ? stats.mae.toFixed(4) : 'N/A',
+      r2: stats?.r2 ? stats.r2.toFixed(4) : 'N/A'
+    };
+  }, [stats]);
+
   const handleTrain = async () => {
     if (!data || !targetColumn) return;
 
@@ -266,23 +275,6 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
       setLoading(false);
     }
   };
-
-  const modelMetrics = useMemo(() => {
-    if (!stats) return null;
-    return {
-      rmse: stats.rmse ? stats.rmse.toFixed(4) : 'N/A',
-      mae: stats.mae ? stats.mae.toFixed(4) : 'N/A',
-      r2: stats.r2 ? stats.r2.toFixed(4) : 'N/A'
-    };
-  }, [stats]);
-
-  if (!data) {
-    return (
-      <div className="text-center text-gray-500 py-8">
-        Please upload some data to begin machine learning
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -572,17 +564,17 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
                     {crossValidation.map(({ fold, rmse }) => (
                       <div key={fold} className="flex justify-between">
                         <span>Fold {fold}:</span>
-                        <span>RMSE = {rmse !== undefined && rmse !== null ? rmse.toFixed(4) : 'N/A'}</span>
+                        <span>RMSE = {rmse != null ? rmse.toFixed(4) : 'N/A'}</span>
                       </div>
                     ))}
                     <div className="flex justify-between font-medium pt-2 border-t">
                       <span>Average RMSE:</span>
                       <span>
-                        {crossValidation.length > 0 
+                        {crossValidation.length > 0 && crossValidation.some(cv => cv.rmse != null)
                           ? (crossValidation
-                              .filter(cv => cv.rmse !== undefined && cv.rmse !== null)
+                              .filter(cv => cv.rmse != null)
                               .reduce((acc, { rmse }) => acc + (rmse || 0), 0) / 
-                              crossValidation.filter(cv => cv.rmse !== undefined && cv.rmse !== null).length
+                              crossValidation.filter(cv => cv.rmse != null).length
                             ).toFixed(4)
                           : 'N/A'
                         }
@@ -592,31 +584,29 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
                 </div>
               )}
 
-              {modelMetrics && (
-                <div>
-                  <h4 className="font-medium mb-2">Model Metrics</h4>
-                  <div className="space-y-1 text-sm">
-                    <div className="flex justify-between">
-                      <span>RMSE:</span>
-                      <span>{modelMetrics.rmse}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>MAE:</span>
-                      <span>{modelMetrics.mae}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>R²:</span>
-                      <span>{modelMetrics.r2}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </Card>
-          </TabsContent>
-        </Tabs>
-      )}
-    </div>
-  );
+          <div>
+            <h4 className="font-medium mb-2">Model Metrics</h4>
+            <div className="space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span>RMSE:</span>
+                <span>{modelMetrics.rmse}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>MAE:</span>
+                <span>{modelMetrics.mae}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>R²:</span>
+                <span>{modelMetrics.r2}</span>
+              </div>
+            </div>
+          </div>
+        </Card>
+      </TabsContent>
+    </Tabs>
+  )}
+</div>
+);
 };
 
 export default MachineLearning;
