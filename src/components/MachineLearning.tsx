@@ -267,6 +267,15 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
     }
   };
 
+  const modelMetrics = useMemo(() => {
+    if (!stats) return null;
+    return {
+      rmse: stats.rmse ? stats.rmse.toFixed(4) : 'N/A',
+      mae: stats.mae ? stats.mae.toFixed(4) : 'N/A',
+      r2: stats.r2 ? stats.r2.toFixed(4) : 'N/A'
+    };
+  }, [stats]);
+
   if (!data) {
     return (
       <div className="text-center text-gray-500 py-8">
@@ -540,14 +549,18 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
                         {stationarityTest.isStationary ? 'Stationary' : 'Non-stationary'}
                       </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span>Mean Variation:</span>
-                      <span>{stationarityTest.meanVariation?.toFixed(4) || 'N/A'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Variance Variation:</span>
-                      <span>{stationarityTest.varianceVariation?.toFixed(4) || 'N/A'}</span>
-                    </div>
+                    {stationarityTest.meanVariation !== undefined && (
+                      <div className="flex justify-between">
+                        <span>Mean Variation:</span>
+                        <span>{stationarityTest.meanVariation.toFixed(4)}</span>
+                      </div>
+                    )}
+                    {stationarityTest.varianceVariation !== undefined && (
+                      <div className="flex justify-between">
+                        <span>Variance Variation:</span>
+                        <span>{stationarityTest.varianceVariation.toFixed(4)}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -559,17 +572,18 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
                     {crossValidation.map(({ fold, rmse }) => (
                       <div key={fold} className="flex justify-between">
                         <span>Fold {fold}:</span>
-                        <span>RMSE = {typeof rmse === 'number' ? rmse.toFixed(4) : 'N/A'}</span>
+                        <span>RMSE = {rmse !== undefined && rmse !== null ? rmse.toFixed(4) : 'N/A'}</span>
                       </div>
                     ))}
                     <div className="flex justify-between font-medium pt-2 border-t">
                       <span>Average RMSE:</span>
                       <span>
                         {crossValidation.length > 0 
-                          ? (crossValidation.reduce((acc, { rmse }) => 
-                              acc + (typeof rmse === 'number' ? rmse : 0), 
-                              0
-                            ) / crossValidation.length).toFixed(4)
+                          ? (crossValidation
+                              .filter(cv => cv.rmse !== undefined && cv.rmse !== null)
+                              .reduce((acc, { rmse }) => acc + (rmse || 0), 0) / 
+                              crossValidation.filter(cv => cv.rmse !== undefined && cv.rmse !== null).length
+                            ).toFixed(4)
                           : 'N/A'
                         }
                       </span>
@@ -578,28 +592,22 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
                 </div>
               )}
 
-              {stats && (
+              {modelMetrics && (
                 <div>
                   <h4 className="font-medium mb-2">Model Metrics</h4>
                   <div className="space-y-1 text-sm">
-                    {stats.rmse !== undefined && (
-                      <div className="flex justify-between">
-                        <span>RMSE:</span>
-                        <span>{stats.rmse.toFixed(4)}</span>
-                      </div>
-                    )}
-                    {stats.mae !== undefined && (
-                      <div className="flex justify-between">
-                        <span>MAE:</span>
-                        <span>{stats.mae.toFixed(4)}</span>
-                      </div>
-                    )}
-                    {stats.r2 !== undefined && (
-                      <div className="flex justify-between">
-                        <span>R²:</span>
-                        <span>{stats.r2.toFixed(4)}</span>
-                      </div>
-                    )}
+                    <div className="flex justify-between">
+                      <span>RMSE:</span>
+                      <span>{modelMetrics.rmse}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>MAE:</span>
+                      <span>{modelMetrics.mae}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>R²:</span>
+                      <span>{modelMetrics.r2}</span>
+                    </div>
                   </div>
                 </div>
               )}
