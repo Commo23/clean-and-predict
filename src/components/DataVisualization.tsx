@@ -1,4 +1,3 @@
-
 import { useState, useMemo } from 'react';
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -35,7 +34,6 @@ const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
     if (!data || !xAxis || selectedColumns.length === 0) return [];
 
     if (isTimeSeries) {
-      // Trier les données par date si c'est une série temporelle
       return data
         .map(row => ({
           date: row[xAxis],
@@ -60,8 +58,8 @@ const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
     if (!chartData.length) return null;
 
     const commonProps = {
-      width: "100%",
-      height: "100%",
+      width: 500,
+      height: 300,
       data: chartData,
       margin: { top: 5, right: 30, left: 20, bottom: 5 }
     };
