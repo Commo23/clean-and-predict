@@ -1,29 +1,30 @@
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { Card } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ResponsiveContainer } from 'recharts';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, ScatterChart, Scatter, AreaChart, Area, ComposedChart,
+  PieChart, Pie, Cell
+} from 'recharts';
+import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
 import DataTable from './DataTable';
-import ChartControls from './visualization/ChartControls';
-import ColumnSelector from './visualization/ColumnSelector';
-import ChartRenderer from './visualization/ChartRenderer';
 
 interface DataVisualizationProps {
   data: any[] | null;
-  onDataChange?: (newData: any[]) => void;
 }
 
-const DataVisualization = ({ data: initialData, onDataChange }: DataVisualizationProps) => {
+const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#0088FE', '#00C49F'];
+
+const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
   const [data, setData] = useState(initialData);
   const [chartType, setChartType] = useState('line');
   const [xAxis, setXAxis] = useState<string>('');
   const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
   const [isTimeSeries, setIsTimeSeries] = useState(false);
-  const [draggingColumn, setDraggingColumn] = useState<string | null>(null);
-
-  useEffect(() => {
-    setData(initialData);
-  }, [initialData]);
 
   const columns = useMemo(() => {
     if (!data || data.length === 0) return [];
@@ -34,6 +35,7 @@ const DataVisualization = ({ data: initialData, onDataChange }: DataVisualizatio
     if (!data || !xAxis || selectedColumns.length === 0) return [];
 
     if (isTimeSeries) {
+      // Trier les données par date si c'est une série temporelle
       return data
         .map(row => ({
           date: row[xAxis],
@@ -54,30 +56,129 @@ const DataVisualization = ({ data: initialData, onDataChange }: DataVisualizatio
     }));
   }, [data, xAxis, selectedColumns, isTimeSeries]);
 
-  const handleDataSave = (newData: any[]) => {
-    setData(newData);
-    onDataChange?.(newData);
-  };
+  const renderChart = () => {
+    if (!chartData.length) return null;
 
-  const handleDragStart = (column: string) => {
-    setDraggingColumn(column);
-  };
+    const commonProps = {
+      width: "100%",
+      height: "100%",
+      data: chartData,
+      margin: { top: 5, right: 30, left: 20, bottom: 5 }
+    };
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
+    switch (chartType) {
+      case 'line':
+        return (
+          <LineChart {...commonProps}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey={isTimeSeries ? "date" : "x"} />
+            <YAxis />
+            <Tooltip />
+            {selectedColumns.map((col, index) => (
+              <Line
+                key={col}
+                type="monotone"
+                dataKey={col}
+                stroke={COLORS[index % COLORS.length]}
+                name={col}
+                connectNulls
+              />
+            ))}
+          </LineChart>
+        );
 
-  const handleDrop = (targetArea: 'x-axis' | 'y-axis') => {
-    if (!draggingColumn) return;
+      case 'area':
+        return (
+          <AreaChart {...commonProps}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey={isTimeSeries ? "date" : "x"} />
+            <YAxis />
+            <Tooltip />
+            {selectedColumns.map((col, index) => (
+              <Area
+                key={col}
+                type="monotone"
+                dataKey={col}
+                stroke={COLORS[index % COLORS.length]}
+                fill={COLORS[index % COLORS.length]}
+                name={col}
+                fillOpacity={0.3}
+                stackId="1"
+              />
+            ))}
+          </AreaChart>
+        );
 
-    if (targetArea === 'x-axis') {
-      setXAxis(draggingColumn);
-    } else {
-      if (!selectedColumns.includes(draggingColumn)) {
-        setSelectedColumns(prev => [...prev, draggingColumn]);
-      }
+      case 'bar':
+        return (
+          <BarChart {...commonProps}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey={isTimeSeries ? "date" : "x"} />
+            <YAxis />
+            <Tooltip />
+            {selectedColumns.map((col, index) => (
+              <Bar
+                key={col}
+                dataKey={col}
+                fill={COLORS[index % COLORS.length]}
+                name={col}
+              />
+            ))}
+          </BarChart>
+        );
+
+      case 'composed':
+        return (
+          <ComposedChart {...commonProps}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey={isTimeSeries ? "date" : "x"} />
+            <YAxis />
+            <Tooltip />
+            {selectedColumns.map((col, index) => (
+              index % 2 === 0 ? (
+                <Bar
+                  key={col}
+                  dataKey={col}
+                  fill={COLORS[index % COLORS.length]}
+                  name={col}
+                />
+              ) : (
+                <Line
+                  key={col}
+                  type="monotone"
+                  dataKey={col}
+                  stroke={COLORS[index % COLORS.length]}
+                  name={col}
+                />
+              )
+            ))}
+          </ComposedChart>
+        );
+
+      case 'scatter':
+        return (
+          <ScatterChart {...commonProps}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey={isTimeSeries ? "date" : "x"} />
+            <YAxis />
+            <Tooltip />
+            {selectedColumns.map((col, index) => (
+              <Scatter
+                key={col}
+                name={col}
+                data={chartData.map(d => ({
+                  x: d[isTimeSeries ? "date" : "x"],
+                  y: d[col]
+                }))}
+                fill={COLORS[index % COLORS.length]}
+              />
+            ))}
+          </ScatterChart>
+        );
+
+      default:
+        return null;
     }
-    setDraggingColumn(null);
   };
 
   if (!data) {
@@ -98,44 +199,81 @@ const DataVisualization = ({ data: initialData, onDataChange }: DataVisualizatio
 
         <TabsContent value="table">
           <Card className="p-4">
-            <DataTable 
-              data={data} 
-              onDataChange={setData} 
-              onSave={handleDataSave}
-            />
+            <DataTable data={data} onDataChange={setData} />
           </Card>
         </TabsContent>
 
         <TabsContent value="charts">
           <div className="space-y-6">
-            <ChartControls
-              chartType={chartType}
-              setChartType={setChartType}
-              xAxis={xAxis}
-              columns={columns}
-              isTimeSeries={isTimeSeries}
-              setIsTimeSeries={setIsTimeSeries}
-              onDragOver={handleDragOver}
-              onDrop={() => handleDrop('x-axis')}
-            />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Select value={chartType} onValueChange={setChartType}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select chart type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="line">Line Chart</SelectItem>
+                  <SelectItem value="area">Area Chart</SelectItem>
+                  <SelectItem value="bar">Bar Chart</SelectItem>
+                  <SelectItem value="scatter">Scatter Plot</SelectItem>
+                  <SelectItem value="composed">Composed Chart</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={xAxis} onValueChange={setXAxis}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select X axis" />
+                </SelectTrigger>
+                <SelectContent>
+                  {columns.map(column => (
+                    <SelectItem key={column} value={column}>
+                      {column}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="isTimeSeries"
+                  checked={isTimeSeries}
+                  onCheckedChange={(checked) => setIsTimeSeries(!!checked)}
+                />
+                <label htmlFor="isTimeSeries" className="text-sm">
+                  Is Time Series
+                </label>
+              </div>
+            </div>
 
             <Card className="p-4">
-              <ColumnSelector
-                columns={columns}
-                xAxis={xAxis}
-                selectedColumns={selectedColumns}
-                setSelectedColumns={setSelectedColumns}
-                onDragStart={handleDragStart}
-              />
+              <ScrollArea className="h-48 mb-4">
+                <div className="space-y-2 p-4">
+                  <h4 className="font-medium mb-2">Select Y-axis variables:</h4>
+                  {columns
+                    .filter(col => col !== xAxis)
+                    .map(column => (
+                      <div key={column} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={column}
+                          checked={selectedColumns.includes(column)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSelectedColumns(prev => [...prev, column]);
+                            } else {
+                              setSelectedColumns(prev => prev.filter(col => col !== column));
+                            }
+                          }}
+                        />
+                        <label htmlFor={column} className="text-sm">
+                          {column}
+                        </label>
+                      </div>
+                    ))}
+                </div>
+              </ScrollArea>
 
               <div className="h-[400px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ChartRenderer
-                    chartType={chartType}
-                    chartData={chartData}
-                    selectedColumns={selectedColumns}
-                    isTimeSeries={isTimeSeries}
-                  />
+                  {renderChart()}
                 </ResponsiveContainer>
               </div>
             </Card>

@@ -1,3 +1,4 @@
+
 import { useState, useMemo } from 'react';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
@@ -16,10 +17,9 @@ import {
 interface DataTableProps {
   data: any[] | null;
   onDataChange: (newData: any[]) => void;
-  onSave?: (data: any[]) => void;
 }
 
-const DataTable = ({ data, onDataChange, onSave }: DataTableProps) => {
+const DataTable = ({ data, onDataChange }: DataTableProps) => {
   const { toast } = useToast();
   const [editingCell, setEditingCell] = useState<{row: number, col: string} | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -58,6 +58,7 @@ const DataTable = ({ data, onDataChange, onSave }: DataTableProps) => {
     
     let processed = [...data];
 
+    // Appliquer les filtres
     Object.entries(filters).forEach(([column, value]) => {
       if (activeFilters[column] && value) {
         processed = processed.filter(row => 
@@ -66,6 +67,7 @@ const DataTable = ({ data, onDataChange, onSave }: DataTableProps) => {
       }
     });
 
+    // Appliquer la recherche globale
     if (searchTerm) {
       processed = processed.filter(row =>
         Object.values(row).some(value =>
@@ -74,6 +76,7 @@ const DataTable = ({ data, onDataChange, onSave }: DataTableProps) => {
       );
     }
 
+    // Appliquer le tri
     if (sortConfig.column && sortConfig.direction) {
       processed.sort((a, b) => {
         const aVal = a[sortConfig.column!];
@@ -112,17 +115,6 @@ const DataTable = ({ data, onDataChange, onSave }: DataTableProps) => {
     toast({
       title: "Changes saved",
       description: "Your data has been updated successfully."
-    });
-  };
-
-  const handleSaveAll = () => {
-    if (!data) return;
-    
-    onSave?.(filteredAndSortedData);
-    
-    toast({
-      title: "Changes saved",
-      description: "All modifications have been saved successfully."
     });
   };
 
@@ -181,14 +173,6 @@ const DataTable = ({ data, onDataChange, onSave }: DataTableProps) => {
           <Button size="sm" onClick={addNewRow}>
             <Plus className="w-4 h-4 mr-1" />
             Add Row
-          </Button>
-          <Button 
-            variant="default"
-            size="sm"
-            onClick={handleSaveAll}
-          >
-            <Save className="w-4 h-4 mr-1" />
-            Save Changes
           </Button>
         </div>
         <div className="flex items-center space-x-4">
