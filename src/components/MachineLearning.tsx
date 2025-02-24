@@ -225,14 +225,16 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
   const chartData = useMemo(() => {
     if (!data || !predictions) return [];
 
+    // Récupérer les 30 dernières entrées historiques
     const historicalData = data.slice(-30).map((row, index) => ({
-      date: `Historical ${index + 1}`,
-      actual: parseFloat(row[targetColumn]),
+      date: `Day ${data.length - 30 + index + 1}`, // Numérotation plus claire
+      actual: row[targetColumn] ? parseFloat(row[targetColumn]) : null,
       predicted: null
     }));
 
-    const predictionData = predictions.map(pred => ({
-      date: pred.date,
+    // Ajouter les prédictions futures
+    const predictionData = predictions.map((pred, index) => ({
+      date: `Day ${data.length + index + 1}`, // Continuation de la numérotation
       actual: null,
       predicted: pred.predicted
     }));
@@ -406,6 +408,10 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
 
       <Card className="p-4">
         <h3 className="text-sm font-medium mb-2">Features Selection</h3>
+        <p className="text-sm text-gray-600 mb-3">
+          Sélectionnez les variables qui seront utilisées pour entraîner le modèle. 
+          Ces caractéristiques aideront à prédire la variable cible.
+        </p>
         <ScrollArea className="h-32">
           <div className="space-y-2">
             {columns
@@ -422,7 +428,18 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
                       }
                     }}
                   />
-                  <label className="text-sm">{column}</label>
+                  <label className="text-sm flex items-center gap-2">
+                    <span>{column}</span>
+                    {correlations && correlations[column] && (
+                      <span className={`text-xs px-2 py-1 rounded ${
+                        Math.abs(correlations[column]) > 0.7 ? 'bg-green-100 text-green-800' :
+                        Math.abs(correlations[column]) > 0.4 ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-red-100 text-red-800'
+                      }`}>
+                        Corr: {correlations[column].toFixed(2)}
+                      </span>
+                    )}
+                  </label>
                 </div>
               ))}
           </div>
@@ -554,6 +571,7 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
             <TabsTrigger value="validation">Validation</TabsTrigger>
           </TabsList>
 
+          {/* Graphique des prédictions */}
           <TabsContent value="predictions">
             <Card className="p-4">
               <div className="flex items-center justify-between mb-4">
@@ -568,21 +586,36 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
               </div>
               
               {chartData.length > 0 && (
-                <div className="h-[300px]">
+                <div className="h-[400px]"> {/* Augmenté la hauteur pour une meilleure visibilité */}
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
-                      <YAxis />
+                      <XAxis 
+                        dataKey="date"
+                        angle={-45}
+                        textAnchor="end"
+                        height={60}
+                        interval={0}
+                        fontSize={12}
+                      />
+                      <YAxis 
+                        label={{ 
+                          value: targetColumn, 
+                          angle: -90, 
+                          position: 'insideLeft',
+                          style: { textAnchor: 'middle' }
+                        }} 
+                      />
                       <Tooltip />
-                      <Legend />
+                      <Legend verticalAlign="top" height={36} />
                       {showHistorical && (
                         <Line
                           type="monotone"
                           dataKey="actual"
                           stroke="#82ca9d"
                           name="Historical"
-                          strokeDasharray="5 5"
+                          dot={true}
+                          strokeWidth={2}
                           connectNulls
                         />
                       )}
@@ -591,6 +624,9 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
                         dataKey="predicted"
                         stroke="#8884d8"
                         name="Predicted"
+                        strokeDasharray="5 5"
+                        dot={true}
+                        strokeWidth={2}
                         connectNulls
                       />
                     </LineChart>
