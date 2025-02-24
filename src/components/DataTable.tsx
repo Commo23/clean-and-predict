@@ -1,11 +1,18 @@
 
 import { useState, useMemo } from 'react';
-import { Table } from "@/components/ui/table";
+import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Pencil, Save, Trash, Plus } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Pencil, Save, Trash, Plus, ArrowUpDown, Search, Filter } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface DataTableProps {
   data: any[] | null;
@@ -17,11 +24,76 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
   const [editingCell, setEditingCell] = useState<{row: number, col: string} | null>(null);
   const [editValue, setEditValue] = useState("");
   const [selectedRows, setSelectedRows] = useState<number[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortConfig, setSortConfig] = useState<{
+    column: string | null;
+    direction: 'asc' | 'desc' | null;
+  }>({ column: null, direction: null });
+  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [activeFilters, setActiveFilters] = useState<Record<string, boolean>>({});
 
   const columns = useMemo(() => {
     if (!data || data.length === 0) return [];
     return Object.keys(data[0]);
   }, [data]);
+
+  const getUniqueValues = (column: string) => {
+    if (!data) return [];
+    return [...new Set(data.map(row => row[column]))];
+  };
+
+  const handleSort = (column: string) => {
+    let direction: 'asc' | 'desc' | null = 'asc';
+    
+    if (sortConfig.column === column) {
+      if (sortConfig.direction === 'asc') direction = 'desc';
+      else if (sortConfig.direction === 'desc') direction = null;
+    }
+    
+    setSortConfig({ column: direction ? column : null, direction });
+  };
+
+  const filteredAndSortedData = useMemo(() => {
+    if (!data) return [];
+    
+    let processed = [...data];
+
+    // Appliquer les filtres
+    Object.entries(filters).forEach(([column, value]) => {
+      if (activeFilters[column] && value) {
+        processed = processed.filter(row => 
+          String(row[column]).toLowerCase().includes(value.toLowerCase())
+        );
+      }
+    });
+
+    // Appliquer la recherche globale
+    if (searchTerm) {
+      processed = processed.filter(row =>
+        Object.values(row).some(value =>
+          String(value).toLowerCase().includes(searchTerm.toLowerCase())
+        )
+      );
+    }
+
+    // Appliquer le tri
+    if (sortConfig.column && sortConfig.direction) {
+      processed.sort((a, b) => {
+        const aVal = a[sortConfig.column!];
+        const bVal = b[sortConfig.column!];
+        
+        if (typeof aVal === 'number' && typeof bVal === 'number') {
+          return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal;
+        }
+        
+        return sortConfig.direction === 'asc'
+          ? String(aVal).localeCompare(String(bVal))
+          : String(bVal).localeCompare(String(aVal));
+      });
+    }
+
+    return processed;
+  }, [data, filters, activeFilters, searchTerm, sortConfig]);
 
   const handleEdit = (row: number, col: string, value: string) => {
     setEditingCell({ row, col });
@@ -103,46 +175,92 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
             Add Row
           </Button>
         </div>
-        <div className="text-sm text-gray-500">
-          {selectedRows.length} row(s) selected
+        <div className="flex items-center space-x-4">
+          <div className="relative">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search in all columns..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-8"
+            />
+          </div>
+          <div className="text-sm text-gray-500">
+            {selectedRows.length} row(s) selected
+          </div>
         </div>
       </div>
 
       <ScrollArea className="h-[500px] rounded-md border">
         <div className="p-4">
-          <table className="w-full">
-            <thead>
-              <tr>
-                <th className="w-8 p-2">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-8">
                   <input
                     type="checkbox"
-                    checked={selectedRows.length === data.length}
+                    checked={selectedRows.length === filteredAndSortedData.length}
                     onChange={(e) => {
                       setSelectedRows(
-                        e.target.checked ? Array.from(Array(data.length).keys()) : []
+                        e.target.checked ? Array.from(Array(filteredAndSortedData.length).keys()) : []
                       );
                     }}
                   />
-                </th>
+                </TableHead>
                 {columns.map(column => (
-                  <th key={column} className="text-left p-2 bg-gray-50">
-                    {column}
-                  </th>
+                  <TableHead key={column}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => handleSort(column)}
+                          className="flex items-center space-x-1 hover:text-primary"
+                        >
+                          {column}
+                          <ArrowUpDown className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm">
+                            <Filter className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-52">
+                          <div className="p-2">
+                            <Input
+                              placeholder={`Filter ${column}...`}
+                              value={filters[column] || ''}
+                              onChange={(e) => {
+                                setFilters(prev => ({
+                                  ...prev,
+                                  [column]: e.target.value
+                                }));
+                                setActiveFilters(prev => ({
+                                  ...prev,
+                                  [column]: true
+                                }));
+                              }}
+                            />
+                          </div>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </TableHead>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((row, rowIndex) => (
-                <tr key={rowIndex} className={selectedRows.includes(rowIndex) ? 'bg-gray-50' : ''}>
-                  <td className="w-8 p-2">
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredAndSortedData.map((row, rowIndex) => (
+                <TableRow key={rowIndex} className={selectedRows.includes(rowIndex) ? 'bg-muted' : ''}>
+                  <TableCell className="w-8">
                     <input
                       type="checkbox"
                       checked={selectedRows.includes(rowIndex)}
                       onChange={() => toggleRowSelection(rowIndex)}
                     />
-                  </td>
+                  </TableCell>
                   {columns.map(column => (
-                    <td key={column} className="p-2 border-t">
+                    <TableCell key={column}>
                       {editingCell?.row === rowIndex && editingCell?.col === column ? (
                         <div className="flex items-center space-x-2">
                           <Input
@@ -167,12 +285,12 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
                           </Button>
                         </div>
                       )}
-                    </td>
+                    </TableCell>
                   ))}
-                </tr>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       </ScrollArea>
     </div>
