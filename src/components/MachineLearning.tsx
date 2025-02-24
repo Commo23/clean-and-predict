@@ -73,9 +73,9 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
     bestScore: number;
     trialResults: Array<{
       model: string;
-      rmse: number;
-      mae: number;
-      r2: number;
+      rmse: number | null;
+      mae: number | null;
+      r2: number | null;
     }>;
   } | null>(null);
 
@@ -477,10 +477,14 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
             <div className="grid grid-cols-2 gap-2">
               <div className="text-sm text-gray-600">Best Model:</div>
               <div className="font-medium">
-                {models.find(m => m.id === autoMLResults.bestModel)?.name}
+                {models.find(m => m.id === autoMLResults.bestModel)?.name ?? 'N/A'}
               </div>
               <div className="text-sm text-gray-600">Best RMSE Score:</div>
-              <div className="font-medium">{autoMLResults.bestScore.toFixed(4)}</div>
+              <div className="font-medium">
+                {typeof autoMLResults.bestScore === 'number' 
+                  ? autoMLResults.bestScore.toFixed(4) 
+                  : 'N/A'}
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -488,10 +492,10 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
               <div className="space-y-1">
                 {autoMLResults.trialResults.map((trial, index) => (
                   <div key={index} className="text-sm grid grid-cols-4 gap-2">
-                    <div>{models.find(m => m.id === trial.model)?.name}</div>
-                    <div>RMSE: {trial.rmse.toFixed(4)}</div>
-                    <div>MAE: {trial.mae.toFixed(4)}</div>
-                    <div>R²: {trial.r2.toFixed(4)}</div>
+                    <div>{models.find(m => m.id === trial.model)?.name ?? 'Unknown'}</div>
+                    <div>RMSE: {trial.rmse?.toFixed(4) ?? 'N/A'}</div>
+                    <div>MAE: {trial.mae?.toFixed(4) ?? 'N/A'}</div>
+                    <div>R²: {trial.r2?.toFixed(4) ?? 'N/A'}</div>
                   </div>
                 ))}
               </div>
