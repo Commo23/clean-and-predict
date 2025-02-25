@@ -1,10 +1,9 @@
-<lov-code>
 import { useState, useMemo, useCallback } from 'react';
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -615,6 +614,8 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
     });
   };
 
+  const [data, setData] = useState<any[] | null>([]);
+
   if (!data) {
     return (
       <div className="text-center text-gray-500 py-8">
@@ -885,6 +886,4 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis 
-                        dataKey="date"
-                        
+                      <
