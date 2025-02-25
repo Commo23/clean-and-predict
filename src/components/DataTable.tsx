@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import {
   Table, TableHeader, TableBody, TableHead,
@@ -23,6 +24,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { Pencil, Save, Trash, Plus, ArrowUpDown, Search, Filter, Calculator } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
