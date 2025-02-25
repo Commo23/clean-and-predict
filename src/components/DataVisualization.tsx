@@ -36,31 +36,6 @@ const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
     return Object.keys(data[0]);
   }, [data]);
 
-  const chartData = useMemo(() => {
-    if (!data || !xAxis || selectedColumns.length === 0) return [];
-
-    if (isTimeSeries) {
-      // Trier les données par date si c'est une série temporelle
-      return data
-        .map(row => ({
-          date: row[xAxis],
-          ...selectedColumns.reduce((acc, col) => ({
-            ...acc,
-            [col]: parseFloat(row[col]) || null
-          }), {})
-        }))
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    }
-
-    return data.map(row => ({
-      x: row[xAxis],
-      ...selectedColumns.reduce((acc, col) => ({
-        ...acc,
-        [col]: parseFloat(row[col]) || null
-      }), {})
-    }));
-  }, [data, xAxis, selectedColumns, isTimeSeries]);
-
   const renderChart = ({ chartType, data, xAxis, selectedColumns, isTimeSeries }: {
     chartType: string,
     data: any[],
@@ -79,8 +54,8 @@ const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
     }));
 
     const commonProps = {
-      width: "100%",
-      height: "100%",
+      width: 500,
+      height: 300,
       data: chartData,
       margin: { top: 5, right: 30, left: 20, bottom: 5 }
     };

@@ -169,7 +169,7 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
     }, []);
   };
 
-  const cleanData = (method: string) => {
+  const cleanData = (method: 'mean' | 'median' | 'previous' | 'delete') => {
     if (!data || !selectedColumn) return;
     
     const anomalies = detectAnomalies(selectedColumn);
@@ -202,17 +202,14 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
       case 'delete':
         const filteredData = data.filter((_, idx) => !anomalies.includes(idx));
         return onDataChange(filteredData);
-      default:
-        return;
     }
     
-    anomalies.forEach(idx => {
-      if (method !== 'delete' && method !== 'previous') {
+    if (method !== 'delete' && method !== 'previous') {
+      anomalies.forEach(idx => {
         newData[idx][selectedColumn] = replacement;
-      }
-    });
-    
-    onDataChange(newData);
+      });
+      onDataChange(newData);
+    }
   };
 
   if (!data || data.length === 0) {
@@ -271,7 +268,7 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
           </AlertDialogHeader>
           <div className="space-y-4 py-4">
             <Select
-              value={selectedColumn || ""}
+              value={selectedColumn || undefined}
               onValueChange={setSelectedColumn}
             >
               <SelectTrigger>
