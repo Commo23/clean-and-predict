@@ -1,23 +1,37 @@
-import { useState, useMemo } from 'react';
-import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
+import React, { useState, useMemo } from 'react';
+import {
+  Table, TableHeader, TableBody, TableHead,
+  TableRow, TableCell
+} from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Pencil, Save, Trash, Plus, ArrowUpDown, Search, Filter, Calculator } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
-import { 
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 interface DataTableProps {
   data: any[] | null;
   onDataChange: (newData: any[]) => void;
 }
+
+type CleaningMethod = 'mean' | 'median' | 'previous' | 'delete';
 
 const DataTable = ({ data, onDataChange }: DataTableProps) => {
   const { toast } = useToast();
@@ -169,26 +183,35 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
     }, []);
   };
 
-  const cleanData = (method: 'mean' | 'median' | 'previous' | 'delete') => {
+  const cleanData = (method: CleaningMethod) => {
     if (!data || !selectedColumn) return;
     
     const anomalies = detectAnomalies(selectedColumn);
     const newData = [...data];
     const values = data.map(row => Number(row[selectedColumn])).filter(val => !isNaN(val));
     
-    let replacement;
     switch (method) {
-      case 'mean':
-        replacement = values.reduce((a, b) => a + b, 0) / values.length;
+      case 'mean': {
+        const replacement = values.reduce((a, b) => a + b, 0) / values.length;
+        anomalies.forEach(idx => {
+          newData[idx][selectedColumn] = replacement;
+        });
+        onDataChange(newData);
         break;
-      case 'median':
+      }
+      case 'median': {
         const sorted = [...values].sort((a, b) => a - b);
         const mid = Math.floor(sorted.length / 2);
-        replacement = sorted.length % 2 === 0 
+        const replacement = sorted.length % 2 === 0 
           ? (sorted[mid - 1] + sorted[mid]) / 2
           : sorted[mid];
+        anomalies.forEach(idx => {
+          newData[idx][selectedColumn] = replacement;
+        });
+        onDataChange(newData);
         break;
-      case 'previous':
+      }
+      case 'previous': {
         anomalies.forEach(idx => {
           let prevIdx = idx - 1;
           while (prevIdx >= 0 && detectAnomalies(selectedColumn).includes(prevIdx)) {
@@ -198,17 +221,14 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
             newData[idx][selectedColumn] = newData[prevIdx][selectedColumn];
           }
         });
-        return onDataChange(newData);
-      case 'delete':
+        onDataChange(newData);
+        break;
+      }
+      case 'delete': {
         const filteredData = data.filter((_, idx) => !anomalies.includes(idx));
-        return onDataChange(filteredData);
-    }
-    
-    if (method !== 'delete' && method !== 'previous') {
-      anomalies.forEach(idx => {
-        newData[idx][selectedColumn] = replacement;
-      });
-      onDataChange(newData);
+        onDataChange(filteredData);
+        break;
+      }
     }
   };
 
@@ -271,14 +291,16 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
               value={selectedColumn || undefined}
               onValueChange={setSelectedColumn}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select column" />
               </SelectTrigger>
               <SelectContent>
                 {columns.map(column => (
-                  <SelectItem key={column} value={column}>
-                    {column}
-                  </SelectItem>
+                  column && (
+                    <SelectItem key={column} value={column}>
+                      {column}
+                    </SelectItem>
+                  )
                 ))}
               </SelectContent>
             </Select>
