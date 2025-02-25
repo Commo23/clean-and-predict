@@ -1,3 +1,4 @@
+<lov-code>
 import { useState, useMemo, useCallback } from 'react';
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -58,8 +59,9 @@ const autoMLConfig = {
 
 type CleaningMethod = 'mean' | 'median' | 'previous' | 'delete';
 
-const MachineLearning = ({ data }: MachineLearningProps) => {
+const MachineLearning = ({ data: initialData }: MachineLearningProps) => {
   const { toast } = useToast();
+  const [data, setData] = useState<any[] | null>(initialData);
   const [selectedModel, setSelectedModel] = useState('');
   const [targetColumn, setTargetColumn] = useState('');
   const [features, setFeatures] = useState<string[]>([]);
@@ -614,8 +616,6 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
     });
   };
 
-  const [data, setData] = useState<any[] | null>([]);
-
   if (!data) {
     return (
       <div className="text-center text-gray-500 py-8">
@@ -867,7 +867,6 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
             <TabsTrigger value="validation">Validation</TabsTrigger>
           </TabsList>
 
-          {/* Graphique des prédictions */}
           <TabsContent value="predictions">
             <Card className="p-4">
               <div className="flex items-center justify-between mb-4">
@@ -882,8 +881,9 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
               </div>
               
               {chartData.length > 0 && (
-                <div className="h-[400px]"> {/* Augmenté la hauteur pour une meilleure visibilité */}
+                <div className="h-[400px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <
+                      <XAxis dataKey="date" />
+                      <YAxis />
