@@ -20,6 +20,7 @@ import {
   ScatterChart,
   Scatter
 } from 'recharts';
+import jsPDF from 'jspdf';
 
 interface MachineLearningProps {
   data: any[] | null;
@@ -361,6 +362,90 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
     }
   };
 
+  const exportToPDF = () => {
+    if (!predictions || !stats || !autoMLResults) {
+      toast({
+        title: "Erreur",
+        description: "Aucun résultat à exporter. Veuillez d'abord exécuter l'AutoML.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const doc = new jsPDF();
+    let yPosition = 20;
+    const lineHeight = 10;
+
+    // Titre
+    doc.setFontSize(20);
+    doc.text('Rapport AutoML', 20, yPosition);
+    yPosition += lineHeight * 2;
+
+    // Informations sur le modèle
+    doc.setFontSize(16);
+    doc.text('Meilleur Modèle', 20, yPosition);
+    yPosition += lineHeight;
+    doc.setFontSize(12);
+    doc.text(`Modèle: ${models.find(m => m.id === autoMLResults.bestModel)?.name}`, 20, yPosition);
+    yPosition += lineHeight;
+    doc.text(`Score RMSE: ${autoMLResults.bestScore.toFixed(4)}`, 20, yPosition);
+    yPosition += lineHeight * 2;
+
+    // Résultats des essais
+    doc.setFontSize(16);
+    doc.text('Résultats des Essais', 20, yPosition);
+    yPosition += lineHeight;
+    doc.setFontSize(12);
+    autoMLResults.trialResults.forEach(trial => {
+      doc.text(`${models.find(m => m.id === trial.model)?.name}:`, 20, yPosition);
+      yPosition += lineHeight;
+      doc.text(`  RMSE: ${trial.rmse?.toFixed(4) ?? 'N/A'}`, 30, yPosition);
+      yPosition += lineHeight;
+      doc.text(`  MAE: ${trial.mae?.toFixed(4) ?? 'N/A'}`, 30, yPosition);
+      yPosition += lineHeight;
+      doc.text(`  R²: ${trial.r2?.toFixed(4) ?? 'N/A'}`, 30, yPosition);
+      yPosition += lineHeight;
+    });
+
+    // Statistiques
+    if (stats) {
+      yPosition += lineHeight;
+      doc.setFontSize(16);
+      doc.text('Statistiques', 20, yPosition);
+      yPosition += lineHeight;
+      doc.setFontSize(12);
+      doc.text(`Moyenne: ${stats.mean.toFixed(4)}`, 20, yPosition);
+      yPosition += lineHeight;
+      doc.text(`Médiane: ${stats.median.toFixed(4)}`, 20, yPosition);
+      yPosition += lineHeight;
+      doc.text(`Écart-type: ${stats.std.toFixed(4)}`, 20, yPosition);
+      yPosition += lineHeight;
+      doc.text(`Min: ${stats.min.toFixed(4)}`, 20, yPosition);
+      yPosition += lineHeight;
+      doc.text(`Max: ${stats.max.toFixed(4)}`, 20, yPosition);
+    }
+
+    // Si on a des corrélations
+    if (correlations && Object.keys(correlations).length > 0) {
+      yPosition += lineHeight * 2;
+      doc.setFontSize(16);
+      doc.text('Corrélations', 20, yPosition);
+      yPosition += lineHeight;
+      doc.setFontSize(12);
+      Object.entries(correlations).forEach(([feature, correlation]) => {
+        doc.text(`${feature}: ${correlation.toFixed(4)}`, 20, yPosition);
+        yPosition += lineHeight;
+      });
+    }
+
+    doc.save('rapport-automl.pdf');
+    
+    toast({
+      title: "Export PDF réussi",
+      description: "Le rapport a été généré avec succès.",
+    });
+  };
+
   if (!data) {
     return (
       <div className="text-center text-gray-500 py-8">
@@ -485,6 +570,17 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
         >
           {loading ? "Training..." : "Train Selected Model"}
         </Button>
+
+        {autoMLResults && (
+          <Button 
+            onClick={exportToPDF}
+            className="flex-1"
+            variant="outline"
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Export PDF
+          </Button>
+        )}
       </div>
 
       {autoMLResults && (
