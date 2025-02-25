@@ -1,4 +1,3 @@
-
 import { useState, useMemo } from 'react';
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,6 +11,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import DataTable from './DataTable';
+import { Plus, Trash } from 'lucide-react';
 
 interface DataVisualizationProps {
   data: any[] | null;
@@ -21,10 +21,15 @@ const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#0088FE', '#00C49F'
 
 const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
   const [data, setData] = useState(initialData);
-  const [chartType, setChartType] = useState('line');
-  const [xAxis, setXAxis] = useState<string>('');
-  const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
-  const [isTimeSeries, setIsTimeSeries] = useState(false);
+  const [charts, setCharts] = useState([
+    {
+      id: 1,
+      chartType: 'line',
+      xAxis: '',
+      selectedColumns: [] as string[],
+      isTimeSeries: false
+    }
+  ]);
 
   const columns = useMemo(() => {
     if (!data || data.length === 0) return [];
@@ -56,8 +61,22 @@ const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
     }));
   }, [data, xAxis, selectedColumns, isTimeSeries]);
 
-  const renderChart = () => {
-    if (!chartData.length) return null;
+  const renderChart = ({ chartType, data, xAxis, selectedColumns, isTimeSeries }: {
+    chartType: string,
+    data: any[],
+    xAxis: string,
+    selectedColumns: string[],
+    isTimeSeries: boolean
+  }) => {
+    if (!data || !xAxis || selectedColumns.length === 0) return null;
+
+    const chartData = data.map(row => ({
+      x: row[xAxis],
+      ...selectedColumns.reduce((acc, col) => ({
+        ...acc,
+        [col]: parseFloat(row[col]) || null
+      }), {})
+    }));
 
     const commonProps = {
       width: "100%",
@@ -181,6 +200,26 @@ const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
     }
   };
 
+  const addNewChart = () => {
+    setCharts(prev => [...prev, {
+      id: Date.now(),
+      chartType: 'line',
+      xAxis: '',
+      selectedColumns: [],
+      isTimeSeries: false
+    }]);
+  };
+
+  const removeChart = (id: number) => {
+    setCharts(prev => prev.filter(chart => chart.id !== id));
+  };
+
+  const updateChart = (id: number, updates: Partial<typeof charts[0]>) => {
+    setCharts(prev => prev.map(chart =>
+      chart.id === id ? { ...chart, ...updates } : chart
+    ));
+  };
+
   if (!data) {
     return (
       <div className="text-center text-gray-500 py-8">
@@ -205,78 +244,115 @@ const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
 
         <TabsContent value="charts">
           <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Select value={chartType} onValueChange={setChartType}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select chart type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="line">Line Chart</SelectItem>
-                  <SelectItem value="area">Area Chart</SelectItem>
-                  <SelectItem value="bar">Bar Chart</SelectItem>
-                  <SelectItem value="scatter">Scatter Plot</SelectItem>
-                  <SelectItem value="composed">Composed Chart</SelectItem>
-                </SelectContent>
-              </Select>
+            <Button onClick={addNewChart}>
+              <Plus className="w-4 h-4 mr-1" />
+              Add New Chart
+            </Button>
 
-              <Select value={xAxis} onValueChange={setXAxis}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select X axis" />
-                </SelectTrigger>
-                <SelectContent>
-                  {columns.map(column => (
-                    <SelectItem key={column} value={column}>
-                      {column}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {charts.map((chart) => (
+                <Card key={chart.id} className="p-4">
+                  <div className="flex justify-between mb-4">
+                    <Select
+                      value={chart.chartType}
+                      onValueChange={(value) => updateChart(chart.id, { chartType: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select chart type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="line">Line Chart</SelectItem>
+                        <SelectItem value="area">Area Chart</SelectItem>
+                        <SelectItem value="bar">Bar Chart</SelectItem>
+                        <SelectItem value="scatter">Scatter Plot</SelectItem>
+                        <SelectItem value="composed">Composed Chart</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeChart(chart.id)}
+                    >
+                      <Trash className="w-4 h-4" />
+                    </Button>
+                  </div>
 
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="isTimeSeries"
-                  checked={isTimeSeries}
-                  onCheckedChange={(checked) => setIsTimeSeries(!!checked)}
-                />
-                <label htmlFor="isTimeSeries" className="text-sm">
-                  Is Time Series
-                </label>
-              </div>
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <Select
+                      value={chart.xAxis}
+                      onValueChange={(value) => updateChart(chart.id, { xAxis: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select X axis" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {columns.map(column => (
+                          <SelectItem key={column} value={column}>
+                            {column}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        checked={chart.isTimeSeries}
+                        onCheckedChange={(checked) =>
+                          updateChart(chart.id, { isTimeSeries: !!checked })
+                        }
+                        id={`timeSeries-${chart.id}`}
+                      />
+                      <label htmlFor={`timeSeries-${chart.id}`} className="text-sm">
+                        Time Series
+                      </label>
+                    </div>
+                  </div>
+
+                  <ScrollArea className="h-48 mb-4">
+                    <div className="space-y-2 p-4">
+                      <h4 className="font-medium mb-2">Select Y-axis variables:</h4>
+                      {columns
+                        .filter(col => col !== chart.xAxis)
+                        .map(column => (
+                          <div key={column} className="flex items-center space-x-2">
+                            <Checkbox
+                              checked={chart.selectedColumns.includes(column)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  updateChart(chart.id, {
+                                    selectedColumns: [...chart.selectedColumns, column]
+                                  });
+                                } else {
+                                  updateChart(chart.id, {
+                                    selectedColumns: chart.selectedColumns.filter(
+                                      col => col !== column
+                                    )
+                                  });
+                                }
+                              }}
+                            />
+                            <label className="text-sm">
+                              {column}
+                            </label>
+                          </div>
+                        ))}
+                    </div>
+                  </ScrollArea>
+
+                  <div className="h-[300px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      {renderChart({
+                        chartType: chart.chartType,
+                        data,
+                        xAxis: chart.xAxis,
+                        selectedColumns: chart.selectedColumns,
+                        isTimeSeries: chart.isTimeSeries
+                      })}
+                    </ResponsiveContainer>
+                  </div>
+                </Card>
+              ))}
             </div>
-
-            <Card className="p-4">
-              <ScrollArea className="h-48 mb-4">
-                <div className="space-y-2 p-4">
-                  <h4 className="font-medium mb-2">Select Y-axis variables:</h4>
-                  {columns
-                    .filter(col => col !== xAxis)
-                    .map(column => (
-                      <div key={column} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={column}
-                          checked={selectedColumns.includes(column)}
-                          onCheckedChange={(checked) => {
-                            if (checked) {
-                              setSelectedColumns(prev => [...prev, column]);
-                            } else {
-                              setSelectedColumns(prev => prev.filter(col => col !== column));
-                            }
-                          }}
-                        />
-                        <label htmlFor={column} className="text-sm">
-                          {column}
-                        </label>
-                      </div>
-                    ))}
-                </div>
-              </ScrollArea>
-
-              <div className="h-[400px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  {renderChart()}
-                </ResponsiveContainer>
-              </div>
-            </Card>
           </div>
         </TabsContent>
       </Tabs>

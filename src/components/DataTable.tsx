@@ -1,11 +1,10 @@
-
 import { useState, useMemo } from 'react';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Pencil, Save, Trash, Plus, ArrowUpDown, Search, Filter } from "lucide-react";
+import { Pencil, Save, Trash, Plus, ArrowUpDown, Search, Filter, Calculator } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { 
   DropdownMenu,
@@ -13,6 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 interface DataTableProps {
   data: any[] | null;
@@ -31,6 +31,8 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
   }>({ column: null, direction: null });
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [activeFilters, setActiveFilters] = useState<Record<string, boolean>>({});
+  const [selectedColumn, setSelectedColumn] = useState<string | null>(null);
+  const [showCleaningDialog, setShowCleaningDialog] = useState(false);
 
   const columns = useMemo(() => {
     if (!data || data.length === 0) return [];
@@ -58,7 +60,6 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
     
     let processed = [...data];
 
-    // Appliquer les filtres
     Object.entries(filters).forEach(([column, value]) => {
       if (activeFilters[column] && value) {
         processed = processed.filter(row => 
@@ -67,7 +68,6 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
       }
     });
 
-    // Appliquer la recherche globale
     if (searchTerm) {
       processed = processed.filter(row =>
         Object.values(row).some(value =>
@@ -76,7 +76,6 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
       );
     }
 
-    // Appliquer le tri
     if (sortConfig.column && sortConfig.direction) {
       processed.sort((a, b) => {
         const aVal = a[sortConfig.column!];
@@ -153,6 +152,69 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
     });
   };
 
+  const detectAnomalies = (column: string) => {
+    if (!data) return [];
+    const values = data.map(row => row[column]).filter(val => !isNaN(Number(val)));
+    const mean = values.reduce((a, b) => a + Number(b), 0) / values.length;
+    const stdDev = Math.sqrt(
+      values.reduce((a, b) => a + Math.pow(Number(b) - mean, 2), 0) / values.length
+    );
+    
+    return data.reduce((acc: number[], row, idx) => {
+      const val = Number(row[column]);
+      if (isNaN(val) || val === null || val === undefined || Math.abs(val - mean) > 2 * stdDev) {
+        acc.push(idx);
+      }
+      return acc;
+    }, []);
+  };
+
+  const cleanData = (method: string) => {
+    if (!data || !selectedColumn) return;
+    
+    const anomalies = detectAnomalies(selectedColumn);
+    const newData = [...data];
+    const values = data.map(row => Number(row[selectedColumn])).filter(val => !isNaN(val));
+    
+    let replacement;
+    switch (method) {
+      case 'mean':
+        replacement = values.reduce((a, b) => a + b, 0) / values.length;
+        break;
+      case 'median':
+        const sorted = [...values].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        replacement = sorted.length % 2 === 0 
+          ? (sorted[mid - 1] + sorted[mid]) / 2
+          : sorted[mid];
+        break;
+      case 'previous':
+        anomalies.forEach(idx => {
+          let prevIdx = idx - 1;
+          while (prevIdx >= 0 && detectAnomalies(selectedColumn).includes(prevIdx)) {
+            prevIdx--;
+          }
+          if (prevIdx >= 0) {
+            newData[idx][selectedColumn] = newData[prevIdx][selectedColumn];
+          }
+        });
+        return onDataChange(newData);
+      case 'delete':
+        const filteredData = data.filter((_, idx) => !anomalies.includes(idx));
+        return onDataChange(filteredData);
+      default:
+        return;
+    }
+    
+    anomalies.forEach(idx => {
+      if (method !== 'delete' && method !== 'previous') {
+        newData[idx][selectedColumn] = replacement;
+      }
+    });
+    
+    onDataChange(newData);
+  };
+
   if (!data || data.length === 0) {
     return <div>No data available</div>;
   }
@@ -174,6 +236,14 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
             <Plus className="w-4 h-4 mr-1" />
             Add Row
           </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setShowCleaningDialog(true)}
+          >
+            <Calculator className="w-4 h-4 mr-1" />
+            Clean Data
+          </Button>
         </div>
         <div className="flex items-center space-x-4">
           <div className="relative">
@@ -190,6 +260,51 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
           </div>
         </div>
       </div>
+
+      <AlertDialog open={showCleaningDialog} onOpenChange={setShowCleaningDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clean Data</AlertDialogTitle>
+            <AlertDialogDescription>
+              Select a column and cleaning method to handle anomalies
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4 py-4">
+            <Select
+              value={selectedColumn || ""}
+              onValueChange={setSelectedColumn}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select column" />
+              </SelectTrigger>
+              <SelectContent>
+                {columns.map(column => (
+                  <SelectItem key={column} value={column}>
+                    {column}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="grid grid-cols-2 gap-2">
+              <Button onClick={() => cleanData('mean')} variant="outline">
+                Replace with Mean
+              </Button>
+              <Button onClick={() => cleanData('median')} variant="outline">
+                Replace with Median
+              </Button>
+              <Button onClick={() => cleanData('previous')} variant="outline">
+                Use Previous Value
+              </Button>
+              <Button onClick={() => cleanData('delete')} variant="outline">
+                Delete Rows
+              </Button>
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <ScrollArea className="h-[500px] rounded-md border">
         <div className="p-4">
