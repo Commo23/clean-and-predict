@@ -264,15 +264,26 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
 
   const detectAnomalies = (column: string) => {
     if (!data) return [];
-    const values = data.map(row => row[column]).filter(val => !isNaN(Number(val)));
-    const mean = values.reduce((a, b) => a + Number(b), 0) / values.length;
-    const stdDev = Math.sqrt(
-      values.reduce((a, b) => a + Math.pow(Number(b) - mean, 2), 0) / values.length
-    );
     
+    const values = data
+      .map((row, index) => ({ 
+        value: Number(row[column]), 
+        index 
+      }))
+      .filter(item => !isNaN(item.value));
+
+    if (values.length === 0) return [];
+
+    const sortedValues = [...values].sort((a, b) => a.value - b.value);
+    const q1 = sortedValues[Math.floor(sortedValues.length * 0.25)].value;
+    const q3 = sortedValues[Math.floor(sortedValues.length * 0.75)].value;
+    const iqr = q3 - q1;
+    const lowerBound = q1 - 1.5 * iqr;
+    const upperBound = q3 + 1.5 * iqr;
+
     return data.reduce((acc: number[], row, idx) => {
       const val = Number(row[column]);
-      if (isNaN(val) || val === null || val === undefined || Math.abs(val - mean) > 2 * stdDev) {
+      if (isNaN(val) || val === null || val === undefined || val < lowerBound || val > upperBound) {
         acc.push(idx);
       }
       return acc;
@@ -284,48 +295,94 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
     
     const anomalies = detectAnomalies(selectedColumn);
     const newData = [...data];
-    const values = data.map(row => Number(row[selectedColumn])).filter(val => !isNaN(val));
     
+    const validValues = data
+      .map(row => Number(row[selectedColumn]))
+      .filter(val => !isNaN(val));
+
+    if (validValues.length === 0) {
+      toast({
+        title: "Erreur",
+        description: "Pas assez de valeurs valides pour effectuer le nettoyage.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     switch (method) {
       case 'mean': {
-        const replacement = values.reduce((a, b) => a + b, 0) / values.length;
+        const mean = validValues.reduce((a, b) => a + b, 0) / validValues.length;
         anomalies.forEach(idx => {
-          newData[idx][selectedColumn] = replacement;
+          newData[idx] = {
+            ...newData[idx],
+            [selectedColumn]: mean.toFixed(2)
+          };
         });
-        onDataChange(newData);
         break;
       }
       case 'median': {
-        const sorted = [...values].sort((a, b) => a - b);
+        const sorted = [...validValues].sort((a, b) => a - b);
         const mid = Math.floor(sorted.length / 2);
-        const replacement = sorted.length % 2 === 0 
-          ? (sorted[mid - 1] + sorted[mid]) / 2
+        const median = sorted.length % 2 === 0 
+          ? ((sorted[mid - 1] + sorted[mid]) / 2)
           : sorted[mid];
         anomalies.forEach(idx => {
-          newData[idx][selectedColumn] = replacement;
+          newData[idx] = {
+            ...newData[idx],
+            [selectedColumn]: median.toFixed(2)
+          };
         });
-        onDataChange(newData);
         break;
       }
       case 'previous': {
         anomalies.forEach(idx => {
           let prevIdx = idx - 1;
-          while (prevIdx >= 0 && detectAnomalies(selectedColumn).includes(prevIdx)) {
+          while (prevIdx >= 0) {
+            const prevValue = Number(newData[prevIdx][selectedColumn]);
+            if (!isNaN(prevValue) && !anomalies.includes(prevIdx)) {
+              newData[idx] = {
+                ...newData[idx],
+                [selectedColumn]: prevValue.toFixed(2)
+              };
+              break;
+            }
             prevIdx--;
           }
-          if (prevIdx >= 0) {
-            newData[idx][selectedColumn] = newData[prevIdx][selectedColumn];
+          if (prevIdx < 0) {
+            let nextIdx = idx + 1;
+            while (nextIdx < newData.length) {
+              const nextValue = Number(newData[nextIdx][selectedColumn]);
+              if (!isNaN(nextValue) && !anomalies.includes(nextIdx)) {
+                newData[idx] = {
+                  ...newData[idx],
+                  [selectedColumn]: nextValue.toFixed(2)
+                };
+                break;
+              }
+              nextIdx++;
+            }
           }
         });
-        onDataChange(newData);
         break;
       }
       case 'delete': {
         const filteredData = data.filter((_, idx) => !anomalies.includes(idx));
         onDataChange(filteredData);
-        break;
+        toast({
+          title: "Données nettoyées",
+          description: `${anomalies.length} lignes ont été supprimées.`
+        });
+        setShowCleaningDialog(false);
+        return;
       }
     }
+
+    onDataChange(newData);
+    toast({
+      title: "Données nettoyées",
+      description: `${anomalies.length} valeurs ont été remplacées.`
+    });
+    setShowCleaningDialog(false);
   };
 
   if (!data || data.length === 0) {
