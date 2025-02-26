@@ -561,7 +561,7 @@ const MachineLearning = ({ data: initialData }: MachineLearningProps) => {
       const ctx = chartCanvas.getContext('2d') as any;
       
       // Récupérer le graphique depuis Recharts en utilisant la ref
-      const chartElement = document.querySelector('.recharts-wrapper canvas');
+      const chartElement = document.querySelector('.recharts-wrapper canvas') as HTMLCanvasElement | null;
       if (chartElement) {
         const chartImage = chartElement.toDataURL('image/png');
         doc.addImage(chartImage, 'PNG', 20, yPosition, 170, 100);
