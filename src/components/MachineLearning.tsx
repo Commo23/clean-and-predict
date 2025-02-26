@@ -1,4 +1,3 @@
-<lov-code>
 import { useState, useMemo, useCallback } from 'react';
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -887,3 +886,147 @@ const MachineLearning = ({ data: initialData }: MachineLearningProps) => {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="date" />
                       <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Line 
+                        type="monotone"
+                        dataKey="actual"
+                        stroke="#8884d8"
+                        name="Actual"
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="predicted"
+                        stroke="#82ca9d"
+                        name="Predicted"
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="correlations">
+            <Card className="p-4">
+              {correlations && Object.keys(correlations).length > 0 ? (
+                <div className="space-y-2">
+                  {Object.entries(correlations).map(([feature, correlation]) => (
+                    <div key={feature} className="flex justify-between">
+                      <span>{feature}</span>
+                      <span className={`px-2 py-1 rounded ${
+                        Math.abs(correlation) > 0.7 ? 'bg-green-100 text-green-800' :
+                        Math.abs(correlation) > 0.4 ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-red-100 text-red-800'
+                      }`}>
+                        {correlation.toFixed(4)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p>No correlation data available</p>
+              )}
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="stats">
+            <Card className="p-4">
+              <div className="flex justify-between items-center mb-4">
+                <h4 className="font-medium">Statistics</h4>
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    checked={showHistorical}
+                    onCheckedChange={(checked) => setShowHistorical(!!checked)}
+                  />
+                  <label className="text-sm">Show Historical Data</label>
+                </div>
+              </div>
+              
+              {chartData.length > 0 && (
+                <div className="h-[400px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Line 
+                        type="monotone"
+                        dataKey="actual"
+                        stroke="#8884d8"
+                        name="Actual"
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="predicted"
+                        stroke="#82ca9d"
+                        name="Predicted"
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="validation">
+            <Card className="p-4">
+              <div className="flex justify-between items-center mb-4">
+                <h4 className="font-medium">Validation</h4>
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    checked={showHistorical}
+                    onCheckedChange={(checked) => setShowHistorical(!!checked)}
+                  />
+                  <label className="text-sm">Show Historical Data</label>
+                </div>
+              </div>
+              
+              {chartData.length > 0 && (
+                <div className="h-[400px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="date" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Line 
+                        type="monotone"
+                        dataKey="actual"
+                        stroke="#8884d8"
+                        name="Actual"
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="predicted"
+                        stroke="#82ca9d"
+                        name="Predicted"
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </Card>
+          </TabsContent>
+        </Tabs>
+      )}
+    </div>
+  );
+};
+
+export default MachineLearning;
