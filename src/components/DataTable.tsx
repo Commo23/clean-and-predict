@@ -165,6 +165,18 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
     });
   };
 
+  const getColumnStatistics = () => {
+    if (!data || columns.length === 0) return null;
+    
+    return columns.reduce((stats: Record<string, DataQualityStats>, column) => {
+      const columnStats = calculateColumnStats(column);
+      if (columnStats) {
+        stats[column] = columnStats;
+      }
+      return stats;
+    }, {});
+  };
+
   const filteredAndSortedData = useMemo(() => {
     if (!data) return [];
     
@@ -268,7 +280,8 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
     const values = data
       .map((row, index) => ({ 
         value: Number(row[column]), 
-        index 
+        index,
+        original: row[column]
       }))
       .filter(item => !isNaN(item.value));
 
@@ -290,12 +303,10 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
     }, []);
   };
 
-  const cleanData = (method: CleaningMethod) => {
+  const handleCleanData = (method: CleaningMethod, anomalies: number[]) => {
     if (!data || !selectedColumn) return;
     
-    const anomalies = detectAnomalies(selectedColumn);
     const newData = [...data];
-    
     const validValues = data
       .map(row => Number(row[selectedColumn]))
       .filter(val => !isNaN(val));
@@ -309,14 +320,18 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
       return;
     }
 
+    let modifiedData;
     switch (method) {
       case 'mean': {
         const mean = validValues.reduce((a, b) => a + b, 0) / validValues.length;
-        anomalies.forEach(idx => {
-          newData[idx] = {
-            ...newData[idx],
-            [selectedColumn]: mean.toFixed(2)
-          };
+        modifiedData = newData.map((row, idx) => {
+          if (anomalies.includes(idx)) {
+            return {
+              ...row,
+              [selectedColumn]: mean.toFixed(2)
+            };
+          }
+          return row;
         });
         break;
       }
@@ -326,63 +341,81 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
         const median = sorted.length % 2 === 0 
           ? ((sorted[mid - 1] + sorted[mid]) / 2)
           : sorted[mid];
-        anomalies.forEach(idx => {
-          newData[idx] = {
-            ...newData[idx],
-            [selectedColumn]: median.toFixed(2)
-          };
+        modifiedData = newData.map((row, idx) => {
+          if (anomalies.includes(idx)) {
+            return {
+              ...row,
+              [selectedColumn]: median.toFixed(2)
+            };
+          }
+          return row;
         });
         break;
       }
       case 'previous': {
-        anomalies.forEach(idx => {
-          let prevIdx = idx - 1;
-          while (prevIdx >= 0) {
-            const prevValue = Number(newData[prevIdx][selectedColumn]);
-            if (!isNaN(prevValue) && !anomalies.includes(prevIdx)) {
-              newData[idx] = {
-                ...newData[idx],
-                [selectedColumn]: prevValue.toFixed(2)
-              };
-              break;
+        modifiedData = newData.map((row, idx) => {
+          if (anomalies.includes(idx)) {
+            let prevIdx = idx - 1;
+            while (prevIdx >= 0) {
+              const prevValue = Number(newData[prevIdx][selectedColumn]);
+              if (!isNaN(prevValue) && !anomalies.includes(prevIdx)) {
+                return {
+                  ...row,
+                  [selectedColumn]: prevValue.toFixed(2)
+                };
+              }
+              prevIdx--;
             }
-            prevIdx--;
-          }
-          if (prevIdx < 0) {
             let nextIdx = idx + 1;
             while (nextIdx < newData.length) {
               const nextValue = Number(newData[nextIdx][selectedColumn]);
               if (!isNaN(nextValue) && !anomalies.includes(nextIdx)) {
-                newData[idx] = {
-                  ...newData[idx],
+                return {
+                  ...row,
                   [selectedColumn]: nextValue.toFixed(2)
                 };
-                break;
               }
               nextIdx++;
             }
           }
+          return row;
         });
         break;
       }
       case 'delete': {
-        const filteredData = data.filter((_, idx) => !anomalies.includes(idx));
-        onDataChange(filteredData);
-        toast({
-          title: "Données nettoyées",
-          description: `${anomalies.length} lignes ont été supprimées.`
-        });
-        setShowCleaningDialog(false);
-        return;
+        modifiedData = data.filter((_, idx) => !anomalies.includes(idx));
+        break;
       }
+      default:
+        return;
     }
 
-    onDataChange(newData);
     toast({
-      title: "Données nettoyées",
-      description: `${anomalies.length} valeurs ont été remplacées.`
+      title: `Confirmer le nettoyage des données`,
+      description: (
+        <div className="space-y-4">
+          <p>{anomalies.length} valeurs seront {method === 'delete' ? 'supprimées' : 'modifiées'}.</p>
+          <div className="flex space-x-2">
+            <Button 
+              variant="destructive" 
+              onClick={() => {
+                onDataChange(modifiedData);
+                toast({
+                  title: "Données nettoyées",
+                  description: `${anomalies.length} valeurs ont été ${method === 'delete' ? 'supprimées' : 'modifiées'}.`
+                });
+                setShowCleaningDialog(false);
+              }}
+            >
+              Confirmer
+            </Button>
+            <Button variant="outline" onClick={() => toast({ title: "Opération annulée" })}>
+              Annuler
+            </Button>
+          </div>
+        </div>
+      ),
     });
-    setShowCleaningDialog(false);
   };
 
   if (!data || data.length === 0) {
@@ -437,14 +470,40 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
       </div>
 
       <AlertDialog open={showCleaningDialog} onOpenChange={setShowCleaningDialog}>
-        <AlertDialogContent className="max-w-2xl">
+        <AlertDialogContent className="max-w-3xl">
           <AlertDialogHeader>
             <AlertDialogTitle>Analyse et Nettoyage des Données</AlertDialogTitle>
             <AlertDialogDescription>
-              Sélectionnez une colonne pour voir ses statistiques, puis choisissez une méthode de nettoyage.
+              Vue d'ensemble des statistiques par colonne, puis sélectionnez une colonne pour le nettoyage.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="space-y-4 py-4">
+          
+          <div className="space-y-6 py-4">
+            <div className="space-y-4">
+              <h4 className="font-semibold">Aperçu global des colonnes</h4>
+              <div className="grid grid-cols-2 gap-4">
+                {columns.map(column => {
+                  const stats = calculateColumnStats(column);
+                  if (!stats) return null;
+                  return (
+                    <div key={column} className="p-3 bg-muted rounded-lg">
+                      <h5 className="font-medium mb-2">{column}</h5>
+                      <div className="text-sm space-y-1">
+                        <div className="flex justify-between">
+                          <span>Valeurs manquantes:</span>
+                          <span>{stats.missingPercentage.toFixed(1)}%</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Valeurs aberrantes:</span>
+                          <span>{stats.outliersPercentage.toFixed(1)}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <Select
               value={selectedColumn || undefined}
               onValueChange={(value) => {
@@ -467,62 +526,97 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
             </Select>
 
             {selectedColumn && dataQualityStats[selectedColumn] && (
-              <div className="p-6 bg-muted rounded-lg space-y-4">
-                <h4 className="font-semibold text-base">Statistiques de la colonne : {selectedColumn}</h4>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center p-2 bg-background rounded">
-                      <span>Valeurs manquantes:</span>
-                      <span className="font-medium text-destructive">
-                        {dataQualityStats[selectedColumn].missing} 
-                        <span className="text-sm ml-1">
-                          ({dataQualityStats[selectedColumn].missingPercentage.toFixed(1)}%)
-                        </span>
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center p-2 bg-background rounded">
-                      <span>Valeurs aberrantes:</span>
-                      <span className="font-medium text-warning">
-                        {dataQualityStats[selectedColumn].outliers}
-                        <span className="text-sm ml-1">
-                          ({dataQualityStats[selectedColumn].outliersPercentage.toFixed(1)}%)
-                        </span>
-                      </span>
-                    </div>
-                  </div>
+              <div className="space-y-4">
+                <div className="p-6 bg-muted rounded-lg space-y-4">
+                  <h4 className="font-semibold text-base">Statistiques de la colonne : {selectedColumn}</h4>
                   
-                  <div className="space-y-2">
-                    <div className="p-2 bg-background rounded">
-                      <p className="text-sm">Moyenne: {dataQualityStats[selectedColumn].summary.mean.toFixed(2)}</p>
-                      <p className="text-sm">Médiane: {dataQualityStats[selectedColumn].summary.median.toFixed(2)}</p>
-                      <p className="text-sm">Écart-type: {dataQualityStats[selectedColumn].summary.std.toFixed(2)}</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center p-2 bg-background rounded">
+                        <span>Valeurs manquantes:</span>
+                        <span className="font-medium text-destructive">
+                          {dataQualityStats[selectedColumn].missing} 
+                          <span className="text-sm ml-1">
+                            ({dataQualityStats[selectedColumn].missingPercentage.toFixed(1)}%)
+                          </span>
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center p-2 bg-background rounded">
+                        <span>Valeurs aberrantes:</span>
+                        <span className="font-medium text-warning">
+                          {dataQualityStats[selectedColumn].outliers}
+                          <span className="text-sm ml-1">
+                            ({dataQualityStats[selectedColumn].outliersPercentage.toFixed(1)}%)
+                          </span>
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <div className="p-2 bg-background rounded">
+                        <p className="text-sm">Moyenne: {dataQualityStats[selectedColumn].summary.mean.toFixed(2)}</p>
+                        <p className="text-sm">Médiane: {dataQualityStats[selectedColumn].summary.median.toFixed(2)}</p>
+                        <p className="text-sm">Écart-type: {dataQualityStats[selectedColumn].summary.std.toFixed(2)}</p>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="space-y-2">
-                  <h5 className="font-medium">Méthodes de nettoyage disponibles :</h5>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button onClick={() => cleanData('mean')} variant="outline" className="justify-start">
-                      <span className="font-normal">Remplacer par la moyenne</span>
-                      <span className="text-xs ml-2 text-muted-foreground">({dataQualityStats[selectedColumn].summary.mean.toFixed(2)})</span>
-                    </Button>
-                    <Button onClick={() => cleanData('median')} variant="outline" className="justify-start">
-                      <span className="font-normal">Remplacer par la médiane</span>
-                      <span className="text-xs ml-2 text-muted-foreground">({dataQualityStats[selectedColumn].summary.median.toFixed(2)})</span>
-                    </Button>
-                    <Button onClick={() => cleanData('previous')} variant="outline" className="justify-start">
-                      <span className="font-normal">Utiliser la valeur précédente</span>
-                    </Button>
-                    <Button onClick={() => cleanData('delete')} variant="outline" className="justify-start text-destructive hover:text-destructive">
-                      <span className="font-normal">Supprimer les lignes</span>
-                    </Button>
+                  <div className="space-y-2">
+                    <h5 className="font-medium">Méthodes de nettoyage disponibles :</h5>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button 
+                        onClick={() => {
+                          const anomalies = detectAnomalies(selectedColumn);
+                          handleCleanData('mean', anomalies);
+                        }} 
+                        variant="outline" 
+                        className="justify-start"
+                      >
+                        <span className="font-normal">Remplacer par la moyenne</span>
+                        <span className="text-xs ml-2 text-muted-foreground">
+                          ({dataQualityStats[selectedColumn].summary.mean.toFixed(2)})
+                        </span>
+                      </Button>
+                      <Button 
+                        onClick={() => {
+                          const anomalies = detectAnomalies(selectedColumn);
+                          handleCleanData('median', anomalies);
+                        }} 
+                        variant="outline" 
+                        className="justify-start"
+                      >
+                        <span className="font-normal">Remplacer par la médiane</span>
+                        <span className="text-xs ml-2 text-muted-foreground">
+                          ({dataQualityStats[selectedColumn].summary.median.toFixed(2)})
+                        </span>
+                      </Button>
+                      <Button 
+                        onClick={() => {
+                          const anomalies = detectAnomalies(selectedColumn);
+                          handleCleanData('previous', anomalies);
+                        }} 
+                        variant="outline" 
+                        className="justify-start"
+                      >
+                        <span className="font-normal">Utiliser la valeur précédente/suivante</span>
+                      </Button>
+                      <Button 
+                        onClick={() => {
+                          const anomalies = detectAnomalies(selectedColumn);
+                          handleCleanData('delete', anomalies);
+                        }} 
+                        variant="outline" 
+                        className="justify-start text-destructive hover:text-destructive"
+                      >
+                        <span className="font-normal">Supprimer les lignes</span>
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>
             )}
           </div>
+
           <AlertDialogFooter>
             <AlertDialogCancel>Fermer</AlertDialogCancel>
           </AlertDialogFooter>
