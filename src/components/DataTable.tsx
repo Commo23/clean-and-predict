@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import {
   Table, TableHeader, TableBody, TableHead,
@@ -40,6 +39,21 @@ interface DataTableProps {
 
 type CleaningMethod = 'mean' | 'median' | 'previous' | 'delete';
 
+interface DataQualityStats {
+  missing: number;
+  outliers: number;
+  total: number;
+  missingPercentage: number;
+  outliersPercentage: number;
+  summary: {
+    mean: number;
+    median: number;
+    std: number;
+    q1: number;
+    q3: number;
+  };
+}
+
 const DataTable = ({ data, onDataChange }: DataTableProps) => {
   const { toast } = useToast();
   const [editingCell, setEditingCell] = useState<{row: number, col: string} | null>(null);
@@ -54,6 +68,7 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
   const [activeFilters, setActiveFilters] = useState<Record<string, boolean>>({});
   const [selectedColumn, setSelectedColumn] = useState<string | null>(null);
   const [showCleaningDialog, setShowCleaningDialog] = useState(false);
+  const [dataQualityStats, setDataQualityStats] = useState<Record<string, DataQualityStats>>({});
 
   const columns = useMemo(() => {
     if (!data || data.length === 0) return [];
@@ -74,6 +89,80 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
     }
     
     setSortConfig({ column: direction ? column : null, direction });
+  };
+
+  const calculateColumnStats = (column: string) => {
+    if (!data) return null;
+    
+    const values = data.map(row => {
+      const value = parseFloat(row[column]);
+      return { value, isMissing: isNaN(value) };
+    });
+
+    const numericValues = values.filter(v => !v.isMissing).map(v => v.value);
+    const missing = values.filter(v => v.isMissing).length;
+
+    if (numericValues.length === 0) return null;
+
+    const sorted = [...numericValues].sort((a, b) => a - b);
+    const q1 = sorted[Math.floor(sorted.length * 0.25)];
+    const q3 = sorted[Math.floor(sorted.length * 0.75)];
+    const iqr = q3 - q1;
+    const lowerBound = q1 - 1.5 * iqr;
+    const upperBound = q3 + 1.5 * iqr;
+    
+    const outliers = numericValues.filter(v => v < lowerBound || v > upperBound).length;
+    const mean = numericValues.reduce((a, b) => a + b, 0) / numericValues.length;
+    const median = sorted[Math.floor(sorted.length / 2)];
+    const std = Math.sqrt(
+      numericValues.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / numericValues.length
+    );
+
+    return {
+      missing,
+      outliers,
+      total: data.length,
+      missingPercentage: (missing / data.length) * 100,
+      outliersPercentage: (outliers / data.length) * 100,
+      summary: {
+        mean,
+        median,
+        std,
+        q1,
+        q3
+      }
+    };
+  };
+
+  const showDataQuality = (column: string) => {
+    const stats = calculateColumnStats(column);
+    if (!stats) {
+      toast({
+        title: "Information non disponible",
+        description: "Cette colonne ne contient pas de données numériques valides.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setDataQualityStats({ [column]: stats });
+    setSelectedColumn(column);
+
+    toast({
+      title: "Statistiques de qualité des données",
+      description: (
+        <div className="space-y-2">
+          <p>Valeurs manquantes: {stats.missing} ({stats.missingPercentage.toFixed(1)}%)</p>
+          <p>Valeurs aberrantes: {stats.outliers} ({stats.outliersPercentage.toFixed(1)}%)</p>
+          <p className="font-semibold mt-2">Statistiques:</p>
+          <p>Moyenne: {stats.summary.mean.toFixed(2)}</p>
+          <p>Médiane: {stats.summary.median.toFixed(2)}</p>
+          <p>Écart-type: {stats.summary.std.toFixed(2)}</p>
+          <p>Q1: {stats.summary.q1.toFixed(2)}</p>
+          <p>Q3: {stats.summary.q3.toFixed(2)}</p>
+        </div>
+      ),
+    });
   };
 
   const filteredAndSortedData = useMemo(() => {
@@ -296,7 +385,10 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
           <div className="space-y-4 py-4">
             <Select
               value={selectedColumn || undefined}
-              onValueChange={setSelectedColumn}
+              onValueChange={(value) => {
+                setSelectedColumn(value);
+                showDataQuality(value);
+              }}
             >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select column" />
@@ -311,6 +403,26 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
                 ))}
               </SelectContent>
             </Select>
+
+            {selectedColumn && dataQualityStats[selectedColumn] && (
+              <div className="p-4 bg-muted rounded-lg space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span>Valeurs manquantes:</span>
+                  <span className="font-medium">
+                    {dataQualityStats[selectedColumn].missing} 
+                    ({dataQualityStats[selectedColumn].missingPercentage.toFixed(1)}%)
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Valeurs aberrantes:</span>
+                  <span className="font-medium">
+                    {dataQualityStats[selectedColumn].outliers}
+                    ({dataQualityStats[selectedColumn].outliersPercentage.toFixed(1)}%)
+                  </span>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-2">
               <Button onClick={() => cleanData('mean')} variant="outline">
                 Replace with Mean
