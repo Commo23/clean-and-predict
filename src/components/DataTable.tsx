@@ -32,12 +32,24 @@ import {
 import { Pencil, Save, Trash, Plus, ArrowUpDown, Search, Filter, Calculator } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
-interface DataTableProps {
-  data: any[] | null;
-  onDataChange: (newData: any[]) => void;
-}
-
 type CleaningMethod = 'mean' | 'median' | 'previous' | 'delete';
+
+interface ColumnQualityReport {
+  column: string;
+  stats: {
+    total: number;
+    missing: number;
+    missingPercentage: number;
+    outliers: number;
+    outliersPercentage: number;
+    mean: number;
+    median: number;
+    std: number;
+    min: number;
+    max: number;
+  };
+  recommendedAction?: CleaningMethod;
+}
 
 interface DataQualityStats {
   missing: number;
@@ -303,118 +315,212 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
     }, []);
   };
 
-  const handleCleanData = (method: CleaningMethod, anomalies: number[]) => {
-    if (!data || !selectedColumn) return;
-    
-    const newData = [...data];
-    const validValues = data
-      .map(row => Number(row[selectedColumn]))
-      .filter(val => !isNaN(val));
+  const analyzeColumn = (column: string): ColumnQualityReport | null => {
+    if (!data || data.length === 0) return null;
 
-    if (validValues.length === 0) {
-      toast({
-        title: "Erreur",
-        description: "Pas assez de valeurs valides pour effectuer le nettoyage.",
-        variant: "destructive"
-      });
-      return;
+    const values = data.map(row => ({
+      value: Number(row[column]),
+      isValid: !isNaN(Number(row[column])) && row[column] !== null && row[column] !== undefined
+    }));
+
+    const validValues = values.filter(v => v.isValid).map(v => v.value);
+    if (validValues.length === 0) return null;
+
+    const sorted = [...validValues].sort((a, b) => a - b);
+    const q1 = sorted[Math.floor(sorted.length * 0.25)];
+    const q3 = sorted[Math.floor(sorted.length * 0.75)];
+    const iqr = q3 - q1;
+    const lowerBound = q1 - 1.5 * iqr;
+    const upperBound = q3 + 1.5 * iqr;
+
+    const missing = values.filter(v => !v.isValid).length;
+    const outliers = validValues.filter(v => v < lowerBound || v > upperBound).length;
+    const mean = validValues.reduce((a, b) => a + b, 0) / validValues.length;
+    const median = sorted[Math.floor(sorted.length / 2)];
+    const std = Math.sqrt(
+      validValues.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / validValues.length
+    );
+
+    let recommendedAction: CleaningMethod | undefined;
+    const missingPercentage = (missing / data.length) * 100;
+    const outliersPercentage = (outliers / data.length) * 100;
+
+    if (missingPercentage > 50) {
+      recommendedAction = 'delete'; // Trop de valeurs manquantes
+    } else if (outliersPercentage > 30) {
+      recommendedAction = 'median'; // Beaucoup de valeurs aberrantes
+    } else if (missingPercentage > 0) {
+      recommendedAction = 'mean'; // Quelques valeurs manquantes
     }
 
-    let modifiedData;
+    return {
+      column,
+      stats: {
+        total: data.length,
+        missing,
+        missingPercentage,
+        outliers,
+        outliersPercentage,
+        mean,
+        median,
+        std,
+        min: sorted[0],
+        max: sorted[sorted.length - 1]
+      },
+      recommendedAction
+    };
+  };
+
+  const generateDataQualityReport = () => {
+    if (!data || columns.length === 0) return [];
+    return columns
+      .map(analyzeColumn)
+      .filter((report): report is ColumnQualityReport => report !== null)
+      .sort((a, b) => 
+        (b.stats.missingPercentage + b.stats.outliersPercentage) - 
+        (a.stats.missingPercentage + a.stats.outliersPercentage)
+      );
+  };
+
+  const prepareCleaningOperation = (
+    column: string,
+    method: CleaningMethod,
+    rows: number[]
+  ) => {
+    if (!data) return null;
+
+    const preview = rows.slice(0, 5);
+    const report = analyzeColumn(column);
+    if (!report) return null;
+
+    const changes = {
+      totalRows: rows.length,
+      previewRows: preview.map(idx => ({
+        rowIndex: idx,
+        oldValue: data[idx][column],
+        newValue: calculateNewValue(column, method, idx)
+      })),
+      method,
+      column,
+      stats: report.stats
+    };
+
+    return changes;
+  };
+
+  const calculateNewValue = (column: string, method: CleaningMethod, rowIndex: number) => {
+    if (!data) return null;
+
+    const report = analyzeColumn(column);
+    if (!report) return null;
+
     switch (method) {
-      case 'mean': {
-        const mean = validValues.reduce((a, b) => a + b, 0) / validValues.length;
-        modifiedData = newData.map((row, idx) => {
-          if (anomalies.includes(idx)) {
-            return {
-              ...row,
-              [selectedColumn]: mean.toFixed(2)
-            };
-          }
-          return row;
-        });
-        break;
-      }
-      case 'median': {
-        const sorted = [...validValues].sort((a, b) => a - b);
-        const mid = Math.floor(sorted.length / 2);
-        const median = sorted.length % 2 === 0 
-          ? ((sorted[mid - 1] + sorted[mid]) / 2)
-          : sorted[mid];
-        modifiedData = newData.map((row, idx) => {
-          if (anomalies.includes(idx)) {
-            return {
-              ...row,
-              [selectedColumn]: median.toFixed(2)
-            };
-          }
-          return row;
-        });
-        break;
-      }
+      case 'mean':
+        return report.stats.mean.toFixed(2);
+      case 'median':
+        return report.stats.median.toFixed(2);
       case 'previous': {
-        modifiedData = newData.map((row, idx) => {
-          if (anomalies.includes(idx)) {
-            let prevIdx = idx - 1;
-            while (prevIdx >= 0) {
-              const prevValue = Number(newData[prevIdx][selectedColumn]);
-              if (!isNaN(prevValue) && !anomalies.includes(prevIdx)) {
-                return {
-                  ...row,
-                  [selectedColumn]: prevValue.toFixed(2)
-                };
-              }
-              prevIdx--;
-            }
-            let nextIdx = idx + 1;
-            while (nextIdx < newData.length) {
-              const nextValue = Number(newData[nextIdx][selectedColumn]);
-              if (!isNaN(nextValue) && !anomalies.includes(nextIdx)) {
-                return {
-                  ...row,
-                  [selectedColumn]: nextValue.toFixed(2)
-                };
-              }
-              nextIdx++;
-            }
-          }
-          return row;
-        });
-        break;
+        let prevIdx = rowIndex - 1;
+        while (prevIdx >= 0) {
+          const prevValue = Number(data[prevIdx][column]);
+          if (!isNaN(prevValue)) return prevValue.toFixed(2);
+          prevIdx--;
+        }
+        let nextIdx = rowIndex + 1;
+        while (nextIdx < data.length) {
+          const nextValue = Number(data[nextIdx][column]);
+          if (!isNaN(nextValue)) return nextValue.toFixed(2);
+          nextIdx++;
+        }
+        return report.stats.mean.toFixed(2);
       }
-      case 'delete': {
-        modifiedData = data.filter((_, idx) => !anomalies.includes(idx));
-        break;
-      }
+      case 'delete':
+        return 'DELETED';
       default:
-        return;
+        return null;
     }
+  };
+
+  const applyCleaningOperation = (
+    column: string,
+    method: CleaningMethod,
+    rows: number[]
+  ) => {
+    if (!data) return;
+
+    const changes = prepareCleaningOperation(column, method, rows);
+    if (!changes) return;
 
     toast({
-      title: `Confirmer le nettoyage des données`,
+      title: "Confirmer le nettoyage des données",
       description: (
         <div className="space-y-4">
-          <p>{anomalies.length} valeurs seront {method === 'delete' ? 'supprimées' : 'modifiées'}.</p>
-          <div className="flex space-x-2">
-            <Button 
-              variant="destructive" 
-              onClick={() => {
-                onDataChange(modifiedData);
-                toast({
-                  title: "Données nettoyées",
-                  description: `${anomalies.length} valeurs ont été ${method === 'delete' ? 'supprimées' : 'modifiées'}.`
-                });
-                setShowCleaningDialog(false);
-              }}
+          <h4 className="font-medium">Aperçu des modifications :</h4>
+          <div className="bg-muted p-2 rounded text-sm space-y-2">
+            {changes.previewRows.map((row, i) => (
+              <div key={i} className="flex justify-between">
+                <span>Ligne {row.rowIndex + 1}:</span>
+                <span>{row.oldValue} → {row.newValue}</span>
+              </div>
+            ))}
+            {changes.totalRows > 5 && (
+              <p className="text-muted-foreground">
+                Et {changes.totalRows - 5} autres modifications...
+              </p>
+            )}
+          </div>
+          <div className="flex justify-between text-sm">
+            <span>Méthode :</span>
+            <span className="font-medium">{method}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span>Total des modifications :</span>
+            <span className="font-medium">{changes.totalRows} valeurs</span>
+          </div>
+          <div className="flex space-x-2 mt-4">
+            <Button
+              variant="destructive"
+              onClick={() => executeCleaningOperation(column, method, rows)}
             >
               Confirmer
             </Button>
-            <Button variant="outline" onClick={() => toast({ title: "Opération annulée" })}>
+            <Button
+              variant="outline"
+              onClick={() => toast({ title: "Opération annulée" })}
+            >
               Annuler
             </Button>
           </div>
         </div>
       ),
+    });
+  };
+
+  const executeCleaningOperation = (
+    column: string,
+    method: CleaningMethod,
+    rows: number[]
+  ) => {
+    if (!data) return;
+
+    let newData;
+    if (method === 'delete') {
+      newData = data.filter((_, idx) => !rows.includes(idx));
+    } else {
+      newData = [...data];
+      rows.forEach(idx => {
+        const newValue = calculateNewValue(column, method, idx);
+        if (newValue !== null) {
+          newData[idx] = { ...newData[idx], [column]: newValue };
+        }
+      });
+    }
+
+    onDataChange(newData);
+    setShowCleaningDialog(false);
+    toast({
+      title: "Données nettoyées",
+      description: `${rows.length} valeurs ont été ${method === 'delete' ? 'supprimées' : 'modifiées'}.`
     });
   };
 
@@ -427,13 +533,18 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
       <div className="flex justify-between items-center">
         <div className="space-x-2">
           <Button
-            variant="destructive"
+            variant="outline"
             size="sm"
-            onClick={handleDeleteRows}
-            disabled={selectedRows.length === 0}
+            onClick={() => {
+              setShowCleaningDialog(true);
+              const report = generateDataQualityReport();
+              if (report.length > 0) {
+                setSelectedColumn(report[0].column);
+              }
+            }}
           >
-            <Trash className="w-4 h-4 mr-1" />
-            Delete Selected
+            <Calculator className="w-4 h-4 mr-1" />
+            Analyse et Nettoyage
           </Button>
           <Button size="sm" onClick={addNewRow}>
             <Plus className="w-4 h-4 mr-1" />
@@ -474,144 +585,144 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
           <AlertDialogHeader>
             <AlertDialogTitle>Analyse et Nettoyage des Données</AlertDialogTitle>
             <AlertDialogDescription>
-              Vue d'ensemble des statistiques par colonne, puis sélectionnez une colonne pour le nettoyage.
+              Rapport de qualité des données et recommandations de nettoyage
             </AlertDialogDescription>
           </AlertDialogHeader>
-          
+
           <div className="space-y-6 py-4">
             <div className="space-y-4">
-              <h4 className="font-semibold">Aperçu global des colonnes</h4>
+              <h4 className="font-semibold">État global des données</h4>
               <div className="grid grid-cols-2 gap-4">
-                {columns.map(column => {
-                  const stats = calculateColumnStats(column);
-                  if (!stats) return null;
-                  return (
-                    <div key={column} className="p-3 bg-muted rounded-lg">
-                      <h5 className="font-medium mb-2">{column}</h5>
-                      <div className="text-sm space-y-1">
-                        <div className="flex justify-between">
-                          <span>Valeurs manquantes:</span>
-                          <span>{stats.missingPercentage.toFixed(1)}%</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Valeurs aberrantes:</span>
-                          <span>{stats.outliersPercentage.toFixed(1)}%</span>
-                        </div>
+                {generateDataQualityReport().map(report => (
+                  <div 
+                    key={report.column} 
+                    className={cn(
+                      "p-4 bg-muted rounded-lg relative",
+                      (report.stats.missingPercentage + report.stats.outliersPercentage > 30) 
+                        ? "border-2 border-destructive" 
+                        : ""
+                    )}
+                  >
+                    <h5 className="font-medium mb-3 flex items-center justify-between">
+                      {report.column}
+                      {report.recommendedAction && (
+                        <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">
+                          Action recommandée: {report.recommendedAction}
+                        </span>
+                      )}
+                    </h5>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span>Valeurs manquantes:</span>
+                        <span className={cn(
+                          report.stats.missingPercentage > 20 ? "text-destructive" : ""
+                        )}>
+                          {report.stats.missingPercentage.toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Valeurs aberrantes:</span>
+                        <span className={cn(
+                          report.stats.outliersPercentage > 20 ? "text-destructive" : ""
+                        )}>
+                          {report.stats.outliersPercentage.toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mt-2 text-xs text-muted-foreground">
+                        <div>Min: {report.stats.min.toFixed(2)}</div>
+                        <div>Max: {report.stats.max.toFixed(2)}</div>
+                        <div>Moyenne: {report.stats.mean.toFixed(2)}</div>
+                        <div>Médiane: {report.stats.median.toFixed(2)}</div>
                       </div>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
             </div>
 
-            <Select
-              value={selectedColumn || undefined}
-              onValueChange={(value) => {
-                setSelectedColumn(value);
-                showDataQuality(value);
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Sélectionnez une colonne à analyser" />
-              </SelectTrigger>
-              <SelectContent>
-                {columns.map(column => (
-                  column && (
+            <div className="space-y-4">
+              <h4 className="font-medium">Sélectionner une colonne à nettoyer</h4>
+              <Select
+                value={selectedColumn || undefined}
+                onValueChange={setSelectedColumn}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Choisir une colonne" />
+                </SelectTrigger>
+                <SelectContent>
+                  {columns.map(column => (
                     <SelectItem key={column} value={column}>
                       {column}
                     </SelectItem>
-                  )
-                ))}
-              </SelectContent>
-            </Select>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-            {selectedColumn && dataQualityStats[selectedColumn] && (
+            {selectedColumn && (
               <div className="space-y-4">
-                <div className="p-6 bg-muted rounded-lg space-y-4">
-                  <h4 className="font-semibold text-base">Statistiques de la colonne : {selectedColumn}</h4>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center p-2 bg-background rounded">
-                        <span>Valeurs manquantes:</span>
-                        <span className="font-medium text-destructive">
-                          {dataQualityStats[selectedColumn].missing} 
-                          <span className="text-sm ml-1">
-                            ({dataQualityStats[selectedColumn].missingPercentage.toFixed(1)}%)
-                          </span>
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center p-2 bg-background rounded">
-                        <span>Valeurs aberrantes:</span>
-                        <span className="font-medium text-warning">
-                          {dataQualityStats[selectedColumn].outliers}
-                          <span className="text-sm ml-1">
-                            ({dataQualityStats[selectedColumn].outliersPercentage.toFixed(1)}%)
-                          </span>
-                        </span>
+                <h4 className="font-medium">Actions de nettoyage disponibles</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <Button
+                    variant="outline"
+                    className="justify-start h-auto py-4"
+                    onClick={() => {
+                      const anomalies = detectAnomalies(selectedColumn);
+                      applyCleaningOperation(selectedColumn, 'mean', anomalies);
+                    }}
+                  >
+                    <div className="text-left">
+                      <div className="font-medium">Remplacer par la moyenne</div>
+                      <div className="text-sm text-muted-foreground">
+                        Idéal pour les valeurs manquantes isolées
                       </div>
                     </div>
-                    
-                    <div className="space-y-2">
-                      <div className="p-2 bg-background rounded">
-                        <p className="text-sm">Moyenne: {dataQualityStats[selectedColumn].summary.mean.toFixed(2)}</p>
-                        <p className="text-sm">Médiane: {dataQualityStats[selectedColumn].summary.median.toFixed(2)}</p>
-                        <p className="text-sm">Écart-type: {dataQualityStats[selectedColumn].summary.std.toFixed(2)}</p>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="justify-start h-auto py-4"
+                    onClick={() => {
+                      const anomalies = detectAnomalies(selectedColumn);
+                      applyCleaningOperation(selectedColumn, 'median', anomalies);
+                    }}
+                  >
+                    <div className="text-left">
+                      <div className="font-medium">Remplacer par la médiane</div>
+                      <div className="text-sm text-muted-foreground">
+                        Meilleur pour les données avec beaucoup d'anomalies
                       </div>
                     </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <h5 className="font-medium">Méthodes de nettoyage disponibles :</h5>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button 
-                        onClick={() => {
-                          const anomalies = detectAnomalies(selectedColumn);
-                          handleCleanData('mean', anomalies);
-                        }} 
-                        variant="outline" 
-                        className="justify-start"
-                      >
-                        <span className="font-normal">Remplacer par la moyenne</span>
-                        <span className="text-xs ml-2 text-muted-foreground">
-                          ({dataQualityStats[selectedColumn].summary.mean.toFixed(2)})
-                        </span>
-                      </Button>
-                      <Button 
-                        onClick={() => {
-                          const anomalies = detectAnomalies(selectedColumn);
-                          handleCleanData('median', anomalies);
-                        }} 
-                        variant="outline" 
-                        className="justify-start"
-                      >
-                        <span className="font-normal">Remplacer par la médiane</span>
-                        <span className="text-xs ml-2 text-muted-foreground">
-                          ({dataQualityStats[selectedColumn].summary.median.toFixed(2)})
-                        </span>
-                      </Button>
-                      <Button 
-                        onClick={() => {
-                          const anomalies = detectAnomalies(selectedColumn);
-                          handleCleanData('previous', anomalies);
-                        }} 
-                        variant="outline" 
-                        className="justify-start"
-                      >
-                        <span className="font-normal">Utiliser la valeur précédente/suivante</span>
-                      </Button>
-                      <Button 
-                        onClick={() => {
-                          const anomalies = detectAnomalies(selectedColumn);
-                          handleCleanData('delete', anomalies);
-                        }} 
-                        variant="outline" 
-                        className="justify-start text-destructive hover:text-destructive"
-                      >
-                        <span className="font-normal">Supprimer les lignes</span>
-                      </Button>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="justify-start h-auto py-4"
+                    onClick={() => {
+                      const anomalies = detectAnomalies(selectedColumn);
+                      applyCleaningOperation(selectedColumn, 'previous', anomalies);
+                    }}
+                  >
+                    <div className="text-left">
+                      <div className="font-medium">Utiliser valeur précédente/suivante</div>
+                      <div className="text-sm text-muted-foreground">
+                        Pour les données séquentielles ou temporelles
+                      </div>
                     </div>
-                  </div>
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    className="justify-start h-auto py-4"
+                    onClick={() => {
+                      const anomalies = detectAnomalies(selectedColumn);
+                      applyCleaningOperation(selectedColumn, 'delete', anomalies);
+                    }}
+                  >
+                    <div className="text-left">
+                      <div className="font-medium">Supprimer les lignes</div>
+                      <div className="text-sm">
+                        En dernier recours, pour les données très problématiques
+                      </div>
+                    </div>
+                  </Button>
                 </div>
               </div>
             )}
