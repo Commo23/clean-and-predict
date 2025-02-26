@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@/components/ui/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -20,8 +20,6 @@ import {
   ScatterChart,
   Scatter
 } from 'recharts';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
 
 interface MachineLearningProps {
   data: any[] | null;
@@ -56,11 +54,8 @@ const autoMLConfig = {
   timeLimit: 300,
 };
 
-type CleaningMethod = 'mean' | 'median' | 'previous' | 'delete';
-
-const MachineLearning = ({ data: initialData }: MachineLearningProps) => {
+const MachineLearning = ({ data }: MachineLearningProps) => {
   const { toast } = useToast();
-  const [data, setData] = useState<any[] | null>(initialData);
   const [selectedModel, setSelectedModel] = useState('');
   const [targetColumn, setTargetColumn] = useState('');
   const [features, setFeatures] = useState<string[]>([]);
@@ -83,7 +78,6 @@ const MachineLearning = ({ data: initialData }: MachineLearningProps) => {
       r2: number | null;
     }>;
   } | null>(null);
-  const [selectedColumn, setSelectedColumn] = useState('');
 
   const columns = useMemo(() => {
     if (!data || data.length === 0) return [];
@@ -367,254 +361,6 @@ const MachineLearning = ({ data: initialData }: MachineLearningProps) => {
     }
   };
 
-  const cleanData = (method: CleaningMethod) => {
-    if (!data || !selectedColumn) return;
-    
-    const newData = [...data];
-    
-    // Fonction pour détecter les valeurs aberrantes (outliers) avec la méthode IQR
-    const detectOutliers = (values: number[]) => {
-      const sortedValues = [...values].sort((a, b) => a - b);
-      const q1 = sortedValues[Math.floor(sortedValues.length * 0.25)];
-      const q3 = sortedValues[Math.floor(sortedValues.length * 0.75)];
-      const iqr = q3 - q1;
-      const lowerBound = q1 - 1.5 * iqr;
-      const upperBound = q3 + 1.5 * iqr;
-      return values.map(v => v < lowerBound || v > upperBound);
-    };
-  
-    // Récupérer toutes les valeurs numériques de la colonne
-    const columnValues = data.map(row => {
-      const value = parseFloat(row[selectedColumn]);
-      return {
-        value,
-        isMissing: isNaN(value),
-        isOutlier: false
-      };
-    });
-  
-    // Détecter les outliers parmi les valeurs non manquantes
-    const numericValues = columnValues.filter(v => !v.isMissing).map(v => v.value);
-    const outlierFlags = detectOutliers(numericValues);
-    let outliersIndex = 0;
-    columnValues.forEach((v, i) => {
-      if (!v.isMissing) {
-        v.isOutlier = outlierFlags[outliersIndex++];
-      }
-    });
-  
-    // Appliquer la méthode de nettoyage choisie
-    switch (method) {
-      case 'mean': {
-        const validValues = numericValues.filter((_, i) => !outlierFlags[i]);
-        const mean = validValues.reduce((a, b) => a + b, 0) / validValues.length;
-        columnValues.forEach((v, i) => {
-          if (v.isMissing || v.isOutlier) {
-            newData[i][selectedColumn] = mean.toFixed(4);
-          }
-        });
-        break;
-      }
-      case 'median': {
-        const validValues = numericValues.filter((_, i) => !outlierFlags[i]);
-        const sorted = [...validValues].sort((a, b) => a - b);
-        const median = sorted.length % 2 === 0
-          ? (sorted[sorted.length/2 - 1] + sorted[sorted.length/2]) / 2
-          : sorted[Math.floor(sorted.length/2)];
-        columnValues.forEach((v, i) => {
-          if (v.isMissing || v.isOutlier) {
-            newData[i][selectedColumn] = median.toFixed(4);
-          }
-        });
-        break;
-      }
-      case 'previous': {
-        for (let i = 0; i < columnValues.length; i++) {
-          if (columnValues[i].isMissing || columnValues[i].isOutlier) {
-            let prevIdx = i - 1;
-            while (prevIdx >= 0 && (columnValues[prevIdx].isMissing || columnValues[prevIdx].isOutlier)) {
-              prevIdx--;
-            }
-            if (prevIdx >= 0) {
-              newData[i][selectedColumn] = newData[prevIdx][selectedColumn];
-            }
-          }
-        }
-        break;
-      }
-      case 'delete': {
-        const filteredData = data.filter((_, i) => !columnValues[i].isMissing && !columnValues[i].isOutlier);
-        setData(filteredData);
-        toast({
-          title: "Nettoyage terminé",
-          description: `${data.length - filteredData.length} lignes supprimées`,
-        });
-        return;
-      }
-    }
-  
-    setData(newData);
-    toast({
-      title: "Nettoyage terminé",
-      description: `Les valeurs manquantes et aberrantes ont été traitées`,
-    });
-  };
-
-  const exportToPDF = async () => {
-    if (!predictions || !stats || !autoMLResults) {
-      toast({
-        title: "Erreur",
-        description: "Aucun résultat à exporter. Veuillez d'abord exécuter l'AutoML.",
-        variant: "destructive",
-      });
-      return;
-    }
-  
-    const doc = new jsPDF();
-    let yPosition = 20;
-    const lineHeight = 10;
-    const pageWidth = doc.internal.pageSize.getWidth();
-  
-    // En-tête avec style
-    doc.setFillColor(52, 152, 219);
-    doc.rect(0, 0, pageWidth, 40, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(24);
-    doc.text('Rapport d\'analyse AutoML', 20, 25);
-    doc.setFontSize(12);
-    doc.text(`Date: ${new Date().toLocaleDateString()}`, pageWidth - 60, 25);
-    
-    // Réinitialiser les styles
-    doc.setTextColor(0, 0, 0);
-    yPosition = 50;
-  
-    // Section Meilleur Modèle
-    doc.setFillColor(241, 246, 251);
-    doc.rect(10, yPosition, pageWidth - 20, 40, 'F');
-    doc.setFontSize(18);
-    doc.setTextColor(41, 128, 185);
-    doc.text('Meilleur Modèle', 20, yPosition + 10);
-    doc.setFontSize(12);
-    doc.setTextColor(0, 0, 0);
-    const bestModel = models.find(m => m.id === autoMLResults.bestModel);
-    doc.text([
-      `Modèle: ${bestModel?.name}`,
-      `Score RMSE: ${autoMLResults.bestScore.toFixed(4)}`,
-      `Description: ${bestModel?.description}`
-    ], 25, yPosition + 20);
-    
-    yPosition += 50;
-  
-    // Section Métriques de Performance
-    doc.text('Métriques de Performance', 20, yPosition);
-    yPosition += lineHeight;
-    // Créer un tableau pour les métriques
-    const metricsData = [
-      ['Métrique', 'Valeur'],
-      ['RMSE', stats.rmse?.toFixed(4) || 'N/A'],
-      ['MAE', stats.mae?.toFixed(4) || 'N/A'],
-      ['R²', stats.r2?.toFixed(4) || 'N/A']
-    ];
-    (doc as any).autoTable({
-      startY: yPosition,
-      head: [metricsData[0]],
-      body: metricsData.slice(1),
-      theme: 'striped',
-      headStyles: { fillColor: [52, 152, 219] }
-    });
-    
-    yPosition = (doc as any).lastAutoTable.finalY + 20;
-  
-    // Section Statistiques Descriptives
-    doc.text('Statistiques Descriptives', 20, yPosition);
-    yPosition += lineHeight;
-    const statsData = [
-      ['Statistique', 'Valeur'],
-      ['Moyenne', stats.mean.toFixed(4)],
-      ['Médiane', stats.median.toFixed(4)],
-      ['Écart-type', stats.std.toFixed(4)],
-      ['Minimum', stats.min.toFixed(4)],
-      ['Maximum', stats.max.toFixed(4)]
-    ];
-    (doc as any).autoTable({
-      startY: yPosition,
-      head: [statsData[0]],
-      body: statsData.slice(1),
-      theme: 'striped',
-      headStyles: { fillColor: [52, 152, 219] }
-    });
-  
-    yPosition = (doc as any).lastAutoTable.finalY + 20;
-  
-    // Nouvelle page pour les graphiques
-    doc.addPage();
-    yPosition = 20;
-  
-    // Titre de la section graphiques
-    doc.setFontSize(18);
-    doc.text('Visualisations', 20, yPosition);
-    yPosition += 20;
-  
-    // Ajouter un graphique des prédictions
-    if (chartData.length > 0) {
-      const chartCanvas = document.createElement('canvas');
-      const ctx = chartCanvas.getContext('2d') as any;
-      
-      // Récupérer le graphique depuis Recharts en utilisant la ref
-      const chartElement = document.querySelector('.recharts-wrapper canvas') as HTMLCanvasElement | null;
-      if (chartElement) {
-        const chartImage = chartElement.toDataURL('image/png');
-        doc.addImage(chartImage, 'PNG', 20, yPosition, 170, 100);
-        doc.text('Prédictions vs Valeurs Réelles', 20, yPosition - 5);
-      }
-    }
-  
-    yPosition += 120;
-  
-    // Corrélations
-    if (correlations && Object.keys(correlations).length > 0) {
-      doc.text('Matrice de Corrélations', 20, yPosition);
-      yPosition += lineHeight;
-      const correlationData = Object.entries(correlations).map(([feature, correlation]) => [
-        feature,
-        correlation.toFixed(4)
-      ]);
-      (doc as any).autoTable({
-        startY: yPosition,
-        head: [['Feature', 'Corrélation']],
-        body: correlationData,
-        theme: 'striped',
-        headStyles: { fillColor: [52, 152, 219] }
-      });
-    }
-  
-    // Ajouter les détails de validation croisée si disponibles
-    if (crossValidation.length > 0) {
-      doc.addPage();
-      yPosition = 20;
-      doc.text('Résultats de la Validation Croisée', 20, yPosition);
-      yPosition += lineHeight;
-      const cvData = crossValidation.map(cv => [
-        `Fold ${cv.fold}`,
-        cv.rmse.toFixed(4)
-      ]);
-      (doc as any).autoTable({
-        startY: yPosition,
-        head: [['Fold', 'RMSE']],
-        body: cvData,
-        theme: 'striped',
-        headStyles: { fillColor: [52, 152, 219] }
-      });
-    }
-  
-    doc.save('rapport-automl-detaille.pdf');
-    
-    toast({
-      title: "Export PDF réussi",
-      description: "Le rapport détaillé a été généré avec succès.",
-    });
-  };
-
   if (!data) {
     return (
       <div className="text-center text-gray-500 py-8">
@@ -739,17 +485,6 @@ const MachineLearning = ({ data: initialData }: MachineLearningProps) => {
         >
           {loading ? "Training..." : "Train Selected Model"}
         </Button>
-
-        {autoMLResults && (
-          <Button 
-            onClick={exportToPDF}
-            className="flex-1"
-            variant="outline"
-          >
-            <Download className="mr-2 h-4 w-4" />
-            Export PDF
-          </Button>
-        )}
       </div>
 
       {autoMLResults && (
@@ -785,36 +520,6 @@ const MachineLearning = ({ data: initialData }: MachineLearningProps) => {
           </div>
         </Card>
       )}
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Select value={selectedColumn} onValueChange={setSelectedColumn}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select column to clean" />
-            </SelectTrigger>
-            <SelectContent>
-              {columns.map(column => (
-                <SelectItem key={column} value={column}>
-                  {column}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Select onValueChange={(value) => cleanData(value as CleaningMethod)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select cleaning method" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="mean">Replace with Mean</SelectItem>
-              <SelectItem value="median">Replace with Median</SelectItem>
-              <SelectItem value="previous">Use Previous Value</SelectItem>
-              <SelectItem value="delete">Delete Rows</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
 
       {selectedModel && (
         <Card className="p-6 bg-gray-50">
@@ -866,6 +571,7 @@ const MachineLearning = ({ data: initialData }: MachineLearningProps) => {
             <TabsTrigger value="validation">Validation</TabsTrigger>
           </TabsList>
 
+          {/* Graphique des prédictions */}
           <TabsContent value="predictions">
             <Card className="p-4">
               <div className="flex items-center justify-between mb-4">
@@ -880,29 +586,48 @@ const MachineLearning = ({ data: initialData }: MachineLearningProps) => {
               </div>
               
               {chartData.length > 0 && (
-                <div className="h-[400px]">
+                <div className="h-[400px]"> {/* Augmenté la hauteur pour une meilleure visibilité */}
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Line 
-                        type="monotone"
-                        dataKey="actual"
-                        stroke="#8884d8"
-                        name="Actual"
-                        strokeWidth={2}
-                        dot={false}
+                      <XAxis 
+                        dataKey="date"
+                        angle={-45}
+                        textAnchor="end"
+                        height={60}
+                        interval={0}
+                        fontSize={12}
                       />
+                      <YAxis 
+                        label={{ 
+                          value: targetColumn, 
+                          angle: -90, 
+                          position: 'insideLeft',
+                          style: { textAnchor: 'middle' }
+                        }} 
+                      />
+                      <Tooltip />
+                      <Legend verticalAlign="top" height={36} />
+                      {showHistorical && (
+                        <Line
+                          type="monotone"
+                          dataKey="actual"
+                          stroke="#82ca9d"
+                          name="Historical"
+                          dot={true}
+                          strokeWidth={2}
+                          connectNulls
+                        />
+                      )}
                       <Line
                         type="monotone"
                         dataKey="predicted"
-                        stroke="#82ca9d"
+                        stroke="#8884d8"
                         name="Predicted"
+                        strokeDasharray="5 5"
+                        dot={true}
                         strokeWidth={2}
-                        dot={false}
+                        connectNulls
                       />
                     </LineChart>
                   </ResponsiveContainer>
@@ -913,114 +638,158 @@ const MachineLearning = ({ data: initialData }: MachineLearningProps) => {
 
           <TabsContent value="correlations">
             <Card className="p-4">
-              {correlations && Object.keys(correlations).length > 0 ? (
+              <h4 className="font-medium mb-4">Feature Correlations</h4>
+              {correlations && (
                 <div className="space-y-2">
-                  {Object.entries(correlations).map(([feature, correlation]) => (
-                    <div key={feature} className="flex justify-between">
-                      <span>{feature}</span>
-                      <span className={`px-2 py-1 rounded ${
-                        Math.abs(correlation) > 0.7 ? 'bg-green-100 text-green-800' :
-                        Math.abs(correlation) > 0.4 ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-red-100 text-red-800'
-                      }`}>
-                        {correlation.toFixed(4)}
-                      </span>
-                    </div>
-                  ))}
+                  {Object.entries(correlations)
+                    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+                    .map(([feature, correlation]) => (
+                      <div key={feature} className="flex justify-between items-center">
+                        <span className="text-sm">{feature}</span>
+                        <span className={`text-sm ${
+                          Math.abs(correlation) > 0.7 ? 'text-green-600' :
+                          Math.abs(correlation) > 0.4 ? 'text-yellow-600' :
+                          'text-red-600'
+                        }`}>
+                          {correlation.toFixed(4)}
+                        </span>
+                      </div>
+                    ))}
                 </div>
-              ) : (
-                <p>No correlation data available</p>
               )}
             </Card>
           </TabsContent>
 
           <TabsContent value="stats">
             <Card className="p-4">
-              <div className="flex justify-between items-center mb-4">
-                <h4 className="font-medium">Statistics</h4>
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    checked={showHistorical}
-                    onCheckedChange={(checked) => setShowHistorical(!!checked)}
-                  />
-                  <label className="text-sm">Show Historical Data</label>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <h4 className="font-medium mb-2">Basic Statistics</h4>
+                  {stats && (
+                    <dl className="space-y-1">
+                      <div className="flex justify-between">
+                        <dt className="text-gray-600">Mean:</dt>
+                        <dd>{stats.mean.toFixed(4)}</dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-gray-600">Median:</dt>
+                        <dd>{stats.median.toFixed(4)}</dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-gray-600">Std Dev:</dt>
+                        <dd>{stats.std.toFixed(4)}</dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-gray-600">Min:</dt>
+                        <dd>{stats.min.toFixed(4)}</dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-gray-600">Max:</dt>
+                        <dd>{stats.max.toFixed(4)}</dd>
+                      </div>
+                    </dl>
+                  )}
                 </div>
               </div>
-              
-              {chartData.length > 0 && (
-                <div className="h-[400px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Line 
-                        type="monotone"
-                        dataKey="actual"
-                        stroke="#8884d8"
-                        name="Actual"
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="predicted"
-                        stroke="#82ca9d"
-                        name="Predicted"
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="metrics">
+            <Card className="p-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <h4 className="font-medium mb-2">Model Performance</h4>
+                  <dl className="space-y-1">
+                    <div className="flex justify-between">
+                      <dt className="text-gray-600">RMSE:</dt>
+                      <dd>{stats.rmse?.toFixed(4)}</dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="text-gray-600">MAE:</dt>
+                      <dd>{stats.mae?.toFixed(4)}</dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="text-gray-600">R²:</dt>
+                      <dd>{stats.r2?.toFixed(4)}</dd>
+                    </div>
+                  </dl>
                 </div>
-              )}
+              </div>
             </Card>
           </TabsContent>
 
           <TabsContent value="validation">
-            <Card className="p-4">
-              <div className="flex justify-between items-center mb-4">
-                <h4 className="font-medium">Validation</h4>
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    checked={showHistorical}
-                    onCheckedChange={(checked) => setShowHistorical(!!checked)}
-                  />
-                  <label className="text-sm">Show Historical Data</label>
-                </div>
-              </div>
-              
-              {chartData.length > 0 && (
-                <div className="h-[400px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Line 
-                        type="monotone"
-                        dataKey="actual"
-                        stroke="#8884d8"
-                        name="Actual"
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="predicted"
-                        stroke="#82ca9d"
-                        name="Predicted"
-                        strokeWidth={2}
-                        dot={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
+            <Card className="p-4 grid gap-4">
+              {stationarityTest && (
+                <div>
+                  <h4 className="font-medium mb-2">Stationarity Test</h4>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span>Status:</span>
+                      <span className={stationarityTest.isStationary ? 'text-green-600' : 'text-red-600'}>
+                        {stationarityTest.isStationary ? 'Stationary' : 'Non-stationary'}
+                      </span>
+                    </div>
+                    {stationarityTest.meanVariation !== undefined && (
+                      <div className="flex justify-between">
+                        <span>Mean Variation:</span>
+                        <span>{stationarityTest.meanVariation.toFixed(4)}</span>
+                      </div>
+                    )}
+                    {stationarityTest.varianceVariation !== undefined && (
+                      <div className="flex justify-between">
+                        <span>Variance Variation:</span>
+                        <span>{stationarityTest.varianceVariation.toFixed(4)}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
+
+              {crossValidation.length > 0 && (
+                <div>
+                  <h4 className="font-medium mb-2">Cross-Validation Results</h4>
+                  <div className="space-y-1 text-sm">
+                    {crossValidation.map(({ fold, rmse }) => (
+                      <div key={fold} className="flex justify-between">
+                        <span>Fold {fold}:</span>
+                        <span>RMSE = {rmse != null ? rmse.toFixed(4) : 'N/A'}</span>
+                      </div>
+                    ))}
+                    <div className="flex justify-between font-medium pt-2 border-t">
+                      <span>Average RMSE:</span>
+                      <span>
+                        {crossValidation.length > 0 && crossValidation.some(cv => cv.rmse != null)
+                          ? (crossValidation
+                              .filter(cv => cv.rmse != null)
+                              .reduce((acc, { rmse }) => acc + (rmse || 0), 0) / 
+                              crossValidation.filter(cv => cv.rmse != null).length
+                            ).toFixed(4)
+                          : 'N/A'
+                        }
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <h4 className="font-medium mb-2">Model Metrics</h4>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span>RMSE:</span>
+                    <span>{modelMetrics?.rmse ?? 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>MAE:</span>
+                    <span>{modelMetrics?.mae ?? 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>R²:</span>
+                    <span>{modelMetrics?.r2 ?? 'N/A'}</span>
+                  </div>
+                </div>
+              </div>
             </Card>
           </TabsContent>
         </Tabs>
