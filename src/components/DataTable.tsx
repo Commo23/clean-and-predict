@@ -352,10 +352,15 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
           <Button
             size="sm"
             variant="outline"
-            onClick={() => setShowCleaningDialog(true)}
+            onClick={() => {
+              setShowCleaningDialog(true);
+              if (selectedColumn) {
+                showDataQuality(selectedColumn);
+              }
+            }}
           >
             <Calculator className="w-4 h-4 mr-1" />
-            Clean Data
+            Analyser et Nettoyer les Données
           </Button>
         </div>
         <div className="flex items-center space-x-4">
@@ -375,11 +380,11 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
       </div>
 
       <AlertDialog open={showCleaningDialog} onOpenChange={setShowCleaningDialog}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-2xl">
           <AlertDialogHeader>
-            <AlertDialogTitle>Clean Data</AlertDialogTitle>
+            <AlertDialogTitle>Analyse et Nettoyage des Données</AlertDialogTitle>
             <AlertDialogDescription>
-              Select a column and cleaning method to handle anomalies
+              Sélectionnez une colonne pour voir ses statistiques, puis choisissez une méthode de nettoyage.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-4 py-4">
@@ -391,7 +396,7 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
               }}
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select column" />
+                <SelectValue placeholder="Sélectionnez une colonne à analyser" />
               </SelectTrigger>
               <SelectContent>
                 {columns.map(column => (
@@ -405,41 +410,64 @@ const DataTable = ({ data, onDataChange }: DataTableProps) => {
             </Select>
 
             {selectedColumn && dataQualityStats[selectedColumn] && (
-              <div className="p-4 bg-muted rounded-lg space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span>Valeurs manquantes:</span>
-                  <span className="font-medium">
-                    {dataQualityStats[selectedColumn].missing} 
-                    ({dataQualityStats[selectedColumn].missingPercentage.toFixed(1)}%)
-                  </span>
+              <div className="p-6 bg-muted rounded-lg space-y-4">
+                <h4 className="font-semibold text-base">Statistiques de la colonne : {selectedColumn}</h4>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center p-2 bg-background rounded">
+                      <span>Valeurs manquantes:</span>
+                      <span className="font-medium text-destructive">
+                        {dataQualityStats[selectedColumn].missing} 
+                        <span className="text-sm ml-1">
+                          ({dataQualityStats[selectedColumn].missingPercentage.toFixed(1)}%)
+                        </span>
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center p-2 bg-background rounded">
+                      <span>Valeurs aberrantes:</span>
+                      <span className="font-medium text-warning">
+                        {dataQualityStats[selectedColumn].outliers}
+                        <span className="text-sm ml-1">
+                          ({dataQualityStats[selectedColumn].outliersPercentage.toFixed(1)}%)
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <div className="p-2 bg-background rounded">
+                      <p className="text-sm">Moyenne: {dataQualityStats[selectedColumn].summary.mean.toFixed(2)}</p>
+                      <p className="text-sm">Médiane: {dataQualityStats[selectedColumn].summary.median.toFixed(2)}</p>
+                      <p className="text-sm">Écart-type: {dataQualityStats[selectedColumn].summary.std.toFixed(2)}</p>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span>Valeurs aberrantes:</span>
-                  <span className="font-medium">
-                    {dataQualityStats[selectedColumn].outliers}
-                    ({dataQualityStats[selectedColumn].outliersPercentage.toFixed(1)}%)
-                  </span>
+
+                <div className="space-y-2">
+                  <h5 className="font-medium">Méthodes de nettoyage disponibles :</h5>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button onClick={() => cleanData('mean')} variant="outline" className="justify-start">
+                      <span className="font-normal">Remplacer par la moyenne</span>
+                      <span className="text-xs ml-2 text-muted-foreground">({dataQualityStats[selectedColumn].summary.mean.toFixed(2)})</span>
+                    </Button>
+                    <Button onClick={() => cleanData('median')} variant="outline" className="justify-start">
+                      <span className="font-normal">Remplacer par la médiane</span>
+                      <span className="text-xs ml-2 text-muted-foreground">({dataQualityStats[selectedColumn].summary.median.toFixed(2)})</span>
+                    </Button>
+                    <Button onClick={() => cleanData('previous')} variant="outline" className="justify-start">
+                      <span className="font-normal">Utiliser la valeur précédente</span>
+                    </Button>
+                    <Button onClick={() => cleanData('delete')} variant="outline" className="justify-start text-destructive hover:text-destructive">
+                      <span className="font-normal">Supprimer les lignes</span>
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}
-
-            <div className="grid grid-cols-2 gap-2">
-              <Button onClick={() => cleanData('mean')} variant="outline">
-                Replace with Mean
-              </Button>
-              <Button onClick={() => cleanData('median')} variant="outline">
-                Replace with Median
-              </Button>
-              <Button onClick={() => cleanData('previous')} variant="outline">
-                Use Previous Value
-              </Button>
-              <Button onClick={() => cleanData('delete')} variant="outline">
-                Delete Rows
-              </Button>
-            </div>
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>Fermer</AlertDialogCancel>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
