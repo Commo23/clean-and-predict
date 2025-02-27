@@ -78,14 +78,17 @@ const TableHeader: FC<TableHeaderProps> = ({
                     placeholder={`Filter ${column}...`}
                     value={filters[column] || ''}
                     onChange={(e) => {
-                      setFilters(prev => ({
-                        ...prev,
+                      // Fixed: Using direct objects instead of updater functions
+                      setFilters({
+                        ...filters,
                         [column]: e.target.value
-                      }));
-                      setActiveFilters(prev => ({
-                        ...prev,
+                      });
+                      
+                      // Fixed: Using activeFilters instead of filters
+                      setActiveFilters({
+                        ...activeFilters,
                         [column]: true
-                      }));
+                      });
                     }}
                   />
                 </div>
