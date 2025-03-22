@@ -153,13 +153,17 @@ export const detectAnomalies = (data: Record<string, any>[], column: string): nu
   const lowerBound = q1 - 1.5 * iqr;
   const upperBound = q3 + 1.5 * iqr;
 
-  return data.reduce((acc: number[], row, idx) => {
-    const val = Number(row[column]);
+  // Fixed: Ensure we return a number[] rather than a Record
+  const anomalyIndices: number[] = [];
+  
+  for (let idx = 0; idx < data.length; idx++) {
+    const val = Number(data[idx][column]);
     if (isNaN(val) || val === null || val === undefined || val < lowerBound || val > upperBound) {
-      acc.push(idx);
+      anomalyIndices.push(idx);
     }
-    return acc;
-  }, []);
+  }
+  
+  return anomalyIndices;
 };
 
 export const calculateNewValue = (data: Record<string, any>[], column: string, method: CleaningMethod, rowIndex: number): string | null => {

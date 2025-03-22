@@ -84,11 +84,16 @@ const TableHeader: FC<TableHeaderProps> = ({
                         [column]: e.target.value
                       });
                       
-                      // Fixed: Using activeFilters instead of filters
-                      setActiveFilters({
-                        ...activeFilters,
-                        [column]: true
+                      // Create a new record with column set to true
+                      const newActiveFilters: Record<string, boolean> = {};
+                      // Copy existing active filters if needed
+                      Object.keys(filters).forEach(key => {
+                        if (filters[key]) newActiveFilters[key] = true;
                       });
+                      // Set the current column as active
+                      newActiveFilters[column] = true;
+                      
+                      setActiveFilters(newActiveFilters);
                     }}
                   />
                 </div>
