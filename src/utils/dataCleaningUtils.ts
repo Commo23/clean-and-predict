@@ -209,3 +209,131 @@ export const generateDataQualityReport = (data: Record<string, any>[], columns: 
       (a.stats.missingPercentage + a.stats.outliersPercentage)
     );
 };
+
+// Nouvelles fonctions pour le traitement avancé des séries temporelles
+export const interpolateTimeSeries = (data: Record<string, any>[], valueColumn: string, timeColumn: string): Record<string, any>[] => {
+  if (!data || data.length === 0) return data;
+  
+  // Vérifier que les données sont triées par timeColumn
+  const sortedData = [...data].sort((a, b) => {
+    const timeA = new Date(a[timeColumn]).getTime();
+    const timeB = new Date(b[timeColumn]).getTime();
+    return timeA - timeB;
+  });
+  
+  const result = [...sortedData];
+  
+  // Trouver les valeurs manquantes ou anomalies
+  for (let i = 0; i < result.length; i++) {
+    const value = Number(result[i][valueColumn]);
+    if (isNaN(value)) {
+      // Interpolation linéaire
+      let prevIndex = -1;
+      let nextIndex = -1;
+      
+      // Trouver la valeur précédente valide
+      for (let j = i - 1; j >= 0; j--) {
+        if (!isNaN(Number(result[j][valueColumn]))) {
+          prevIndex = j;
+          break;
+        }
+      }
+      
+      // Trouver la valeur suivante valide
+      for (let j = i + 1; j < result.length; j++) {
+        if (!isNaN(Number(result[j][valueColumn]))) {
+          nextIndex = j;
+          break;
+        }
+      }
+      
+      // Si nous avons trouvé des valeurs valides avant et après
+      if (prevIndex !== -1 && nextIndex !== -1) {
+        const prevValue = Number(result[prevIndex][valueColumn]);
+        const nextValue = Number(result[nextIndex][valueColumn]);
+        
+        // Interpolation linéaire basée sur le temps si possible
+        try {
+          const prevTime = new Date(result[prevIndex][timeColumn]).getTime();
+          const nextTime = new Date(result[nextIndex][timeColumn]).getTime();
+          const currentTime = new Date(result[i][timeColumn]).getTime();
+          
+          if (!isNaN(prevTime) && !isNaN(nextTime) && !isNaN(currentTime)) {
+            const ratio = (currentTime - prevTime) / (nextTime - prevTime);
+            const interpolatedValue = prevValue + (nextValue - prevValue) * ratio;
+            result[i] = { 
+              ...result[i], 
+              [valueColumn]: interpolatedValue.toFixed(2),
+              __interpolated: true // Marquer la valeur comme interpolée
+            };
+          } else {
+            // Fallback si les dates ne sont pas valides: moyenne simple
+            result[i] = { 
+              ...result[i], 
+              [valueColumn]: ((prevValue + nextValue) / 2).toFixed(2),
+              __interpolated: true
+            };
+          }
+        } catch (e) {
+          // Fallback si le format de date pose problème
+          result[i] = { 
+            ...result[i], 
+            [valueColumn]: ((prevValue + nextValue) / 2).toFixed(2),
+            __interpolated: true
+          };
+        }
+      } else if (prevIndex !== -1) {
+        // Si on a seulement une valeur précédente
+        result[i] = { 
+          ...result[i], 
+          [valueColumn]: result[prevIndex][valueColumn],
+          __interpolated: true
+        };
+      } else if (nextIndex !== -1) {
+        // Si on a seulement une valeur suivante
+        result[i] = { 
+          ...result[i], 
+          [valueColumn]: result[nextIndex][valueColumn],
+          __interpolated: true
+        };
+      }
+      // Si aucune valeur valide n'est trouvée, on laisse la valeur inchangée
+    }
+  }
+  
+  return result;
+};
+
+// Fonction pour lisser une série temporelle avec la méthode de la moyenne mobile
+export const smoothTimeSeries = (data: Record<string, any>[], valueColumn: string, windowSize: number = 3): Record<string, any>[] => {
+  if (!data || data.length === 0 || windowSize < 2) return data;
+  
+  const result = [...data];
+  const halfWindow = Math.floor(windowSize / 2);
+  
+  for (let i = 0; i < data.length; i++) {
+    // Skip edges where we don't have enough points
+    if (i < halfWindow || i >= data.length - halfWindow) continue;
+    
+    let sum = 0;
+    let count = 0;
+    
+    for (let j = i - halfWindow; j <= i + halfWindow; j++) {
+      const val = Number(data[j][valueColumn]);
+      if (!isNaN(val)) {
+        sum += val;
+        count++;
+      }
+    }
+    
+    if (count > 0) {
+      result[i] = {
+        ...result[i],
+        [valueColumn]: (sum / count).toFixed(2),
+        __smoothed: true
+      };
+    }
+  }
+  
+  return result;
+};
