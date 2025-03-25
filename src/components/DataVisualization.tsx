@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import DataTable from './DataTable';
 import { Plus, Trash, Download, Settings, PaintBucket, LayoutGrid } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import DataCleaningDialog from './data-cleaning/DataCleaningDialog';
 
@@ -269,6 +269,7 @@ const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
               innerRadius={normalized ? 60 : 0}
               isAnimationActive={animatedCharts}
               animationDuration={1500}
+              dataKey="value"
             >
               {selectedColumns.map((col: string, index: number) => (
                 <Cell key={`cell-${index}`} fill={colors[index % colors.length]} opacity={chartOpacity} />
@@ -321,9 +322,8 @@ const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
             endAngle={360}
           >
             <RadialBar 
-              minAngle={15} 
-              background 
-              clockWise={true} 
+              angle={15}
+              background
               dataKey="value" 
               opacity={chartOpacity}
               isAnimationActive={animatedCharts}
@@ -347,7 +347,7 @@ const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
               };
             })}
             dataKey="size"
-            ratio={4/3}
+            aspectRatio={4/3}
             stroke="#fff"
             isAnimationActive={animatedCharts}
             animationDuration={1500}
