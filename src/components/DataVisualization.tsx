@@ -1,4 +1,3 @@
-
 import { useState, useMemo, useEffect } from 'react';
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -322,7 +321,6 @@ const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
             endAngle={360}
           >
             <RadialBar 
-              angle={15}
               background
               dataKey="value" 
               opacity={chartOpacity}
