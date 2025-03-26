@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback } from 'react';
+
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -7,7 +8,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Download, Brain } from "lucide-react";
+import { Download, Brain, Table as TableIcon } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -18,8 +19,22 @@ import {
   ResponsiveContainer,
   Legend,
   ScatterChart,
-  Scatter
+  Scatter,
+  Area,
+  ComposedChart,
+  ReferenceLine,
+  ReferenceArea,
+  Brush
 } from 'recharts';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell
+} from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 interface MachineLearningProps {
   data: any[] | null;
@@ -67,6 +82,7 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
   const [crossValidation, setCrossValidation] = useState<{fold: number, rmse: number}[]>([]);
   const [stationarityTest, setStationarityTest] = useState<any>(null);
   const [showHistorical, setShowHistorical] = useState(true);
+  const [showConfidenceInterval, setShowConfidenceInterval] = useState(true);
   const [autoMLRunning, setAutoMLRunning] = useState(false);
   const [autoMLResults, setAutoMLResults] = useState<{
     bestModel: string;
@@ -78,6 +94,7 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
       r2: number | null;
     }>;
   } | null>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
 
   const columns = useMemo(() => {
     if (!data || data.length === 0) return [];
@@ -174,6 +191,38 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
     setCrossValidation(results);
   };
 
+  const exportPredictionsToCSV = () => {
+    if (!predictions) return;
+    
+    const headers = ['Date', 'Predicted Value', 'Lower Bound', 'Upper Bound'];
+    const rows = predictions.map((pred, index) => [
+      pred.date,
+      pred.predicted.toFixed(4),
+      (pred.lowerBound || pred.predicted * 0.9).toFixed(4),
+      (pred.upperBound || pred.predicted * 1.1).toFixed(4)
+    ]);
+    
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.join(','))
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'predictions.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    toast({
+      title: "Export Réussi",
+      description: "Les prédictions ont été exportées au format CSV.",
+    });
+  };
+
   const exportResults = () => {
     if (!predictions || !stats) return;
 
@@ -204,6 +253,29 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
     });
   };
 
+  const exportTableToCSV = () => {
+    if (!tableRef.current || !predictions) return;
+    
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + "Date,Predicted Value,Lower Bound,Upper Bound\n"
+      + predictions.map(row => 
+          `${row.date},${row.predicted.toFixed(4)},${(row.lowerBound || row.predicted * 0.9).toFixed(4)},${(row.upperBound || row.predicted * 1.1).toFixed(4)}`
+        ).join("\n");
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "predictions.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast({
+      title: "Export Réussi",
+      description: "Le tableau de prédictions a été exporté au format CSV.",
+    });
+  };
+
   const calculateCorrelations = () => {
     if (!data || !targetColumn) return;
 
@@ -229,18 +301,27 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
     const historicalData = data.slice(-30).map((row, index) => ({
       date: `Day ${data.length - 30 + index + 1}`, // Numérotation plus claire
       actual: row[targetColumn] ? parseFloat(row[targetColumn]) : null,
-      predicted: null
+      predicted: null,
+      lowerBound: null,
+      upperBound: null
     }));
 
-    // Ajouter les prédictions futures
-    const predictionData = predictions.map((pred, index) => ({
-      date: `Day ${data.length + index + 1}`, // Continuation de la numérotation
-      actual: null,
-      predicted: pred.predicted
-    }));
+    // Ajouter les prédictions futures avec intervalles de confiance
+    const predictionData = predictions.map((pred, index) => {
+      const predictedValue = pred.predicted;
+      const std = stats?.std || predictedValue * 0.1;
+      
+      return {
+        date: `Day ${data.length + index + 1}`, // Continuation de la numérotation
+        actual: null,
+        predicted: predictedValue,
+        lowerBound: pred.lowerBound || predictedValue - 1.96 * std, // Intervalle de confiance à 95%
+        upperBound: pred.upperBound || predictedValue + 1.96 * std
+      };
+    });
 
     return [...historicalData, ...predictionData];
-  }, [data, predictions, targetColumn]);
+  }, [data, predictions, targetColumn, stats]);
 
   const modelMetrics = useMemo(() => ({
     rmse: stats?.rmse?.toFixed(4) ?? 'N/A',
@@ -331,11 +412,18 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
       const stats = calculateStats(values);
 
       const lastValue = values[values.length - 1];
-      const predictions = Array.from({ length: parseInt(forecastPeriod) }, (_, i) => ({
-        date: `Day ${i + 1}`,
-        actual: null,
-        predicted: lastValue + (Math.random() - 0.5) * stats.std,
-      }));
+      const predictions = Array.from({ length: parseInt(forecastPeriod) }, (_, i) => {
+        const predictedValue = lastValue + (Math.random() - 0.5) * stats.std;
+        const std = stats.std * 0.5;
+        
+        return {
+          date: `Day ${i + 1}`,
+          actual: null,
+          predicted: predictedValue,
+          lowerBound: predictedValue - 1.96 * std, // Intervalle de confiance à 95%
+          upperBound: predictedValue + 1.96 * std
+        };
+      });
 
       const simulatedMetrics = {
         rmse: Math.random() * 0.2,
@@ -532,12 +620,60 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
                 {models.find(m => m.id === selectedModel)?.description}
               </p>
             </div>
-            {predictions && (
-              <Button variant="outline" onClick={exportResults}>
-                <Download className="w-4 h-4 mr-2" />
-                Export Results
-              </Button>
-            )}
+            <div className="space-x-2">
+              {predictions && (
+                <>
+                  <Button variant="outline" onClick={exportResults}>
+                    <Download className="w-4 h-4 mr-2" />
+                    Export Results
+                  </Button>
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button variant="outline">
+                        <TableIcon className="w-4 h-4 mr-2" />
+                        View Predictions
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-4xl">
+                      <DialogHeader>
+                        <DialogTitle>Predicted Data</DialogTitle>
+                      </DialogHeader>
+                      <div className="mt-4">
+                        <div className="flex justify-between mb-4">
+                          <h4 className="text-sm font-medium">Forecast Results</h4>
+                          <Button size="sm" onClick={exportPredictionsToCSV}>
+                            <Download className="w-4 h-4 mr-1" />
+                            Export CSV
+                          </Button>
+                        </div>
+                        <ScrollArea className="h-72">
+                          <Table ref={tableRef}>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Date</TableHead>
+                                <TableHead>Predicted Value</TableHead>
+                                <TableHead>Lower Bound (95%)</TableHead>
+                                <TableHead>Upper Bound (95%)</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {predictions.map((pred, index) => (
+                                <TableRow key={index}>
+                                  <TableCell>{pred.date}</TableCell>
+                                  <TableCell>{pred.predicted.toFixed(4)}</TableCell>
+                                  <TableCell>{(pred.lowerBound || pred.predicted * 0.9).toFixed(4)}</TableCell>
+                                  <TableCell>{(pred.upperBound || pred.predicted * 1.1).toFixed(4)}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </ScrollArea>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </>
+              )}
+            </div>
           </div>
           
           <div className="space-y-4">
@@ -576,19 +712,30 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
             <Card className="p-4">
               <div className="flex items-center justify-between mb-4">
                 <h4 className="font-medium">Predictions vs Historical</h4>
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    checked={showHistorical}
-                    onCheckedChange={(checked) => setShowHistorical(!!checked)}
-                  />
-                  <label className="text-sm">Show Historical Data</label>
+                <div className="flex items-center space-x-4">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      checked={showHistorical}
+                      onCheckedChange={(checked) => setShowHistorical(!!checked)}
+                      id="show-historical"
+                    />
+                    <label htmlFor="show-historical" className="text-sm">Show Historical Data</label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      checked={showConfidenceInterval}
+                      onCheckedChange={(checked) => setShowConfidenceInterval(!!checked)}
+                      id="show-confidence"
+                    />
+                    <label htmlFor="show-confidence" className="text-sm">Show Confidence Interval</label>
+                  </div>
                 </div>
               </div>
               
               {chartData.length > 0 && (
-                <div className="h-[400px]"> {/* Augmenté la hauteur pour une meilleure visibilité */}
+                <div className="h-[400px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData}>
+                    <ComposedChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis 
                         dataKey="date"
@@ -606,8 +753,40 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
                           style: { textAnchor: 'middle' }
                         }} 
                       />
-                      <Tooltip />
+                      <Tooltip 
+                        formatter={(value, name) => {
+                          if (name === 'lowerBound' || name === 'upperBound') return null;
+                          return [value, name === 'actual' ? 'Historical' : 'Predicted'];
+                        }}
+                      />
                       <Legend verticalAlign="top" height={36} />
+                      <Brush dataKey="date" height={30} stroke="#8884d8" />
+                      
+                      {showConfidenceInterval && (
+                        <Area
+                          type="monotone"
+                          dataKey="upperBound"
+                          stroke="transparent"
+                          fill="#8884d8"
+                          fillOpacity={0.2}
+                          activeDot={false}
+                          name="Confidence Interval"
+                          isAnimationActive={false}
+                        />
+                      )}
+                      
+                      {showConfidenceInterval && (
+                        <Area
+                          type="monotone"
+                          dataKey="lowerBound"
+                          stroke="transparent"
+                          fill="#8884d8"
+                          fillOpacity={0}
+                          activeDot={false}
+                          isAnimationActive={false}
+                        />
+                      )}
+                      
                       {showHistorical && (
                         <Line
                           type="monotone"
@@ -619,17 +798,26 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
                           connectNulls
                         />
                       )}
+                      
                       <Line
                         type="monotone"
                         dataKey="predicted"
                         stroke="#8884d8"
                         name="Predicted"
-                        strokeDasharray="5 5"
-                        dot={true}
                         strokeWidth={2}
+                        dot={true}
                         connectNulls
                       />
-                    </LineChart>
+                      
+                      {data && data.length > 0 && (
+                        <ReferenceLine
+                          x={`Day ${data.length}`}
+                          stroke="red"
+                          strokeDasharray="3 3"
+                          label={{ value: 'Prediction Start', position: 'top' }}
+                        />
+                      )}
+                    </ComposedChart>
                   </ResponsiveContainer>
                 </div>
               )}
@@ -690,27 +878,21 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
                     </dl>
                   )}
                 </div>
-              </div>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="metrics">
-            <Card className="p-4">
-              <div className="grid grid-cols-2 gap-4">
+                
                 <div>
                   <h4 className="font-medium mb-2">Model Performance</h4>
                   <dl className="space-y-1">
                     <div className="flex justify-between">
                       <dt className="text-gray-600">RMSE:</dt>
-                      <dd>{stats.rmse?.toFixed(4)}</dd>
+                      <dd>{stats?.rmse?.toFixed(4) || "N/A"}</dd>
                     </div>
                     <div className="flex justify-between">
                       <dt className="text-gray-600">MAE:</dt>
-                      <dd>{stats.mae?.toFixed(4)}</dd>
+                      <dd>{stats?.mae?.toFixed(4) || "N/A"}</dd>
                     </div>
                     <div className="flex justify-between">
                       <dt className="text-gray-600">R²:</dt>
-                      <dd>{stats.r2?.toFixed(4)}</dd>
+                      <dd>{stats?.r2?.toFixed(4) || "N/A"}</dd>
                     </div>
                   </dl>
                 </div>

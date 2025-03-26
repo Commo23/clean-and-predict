@@ -1,3 +1,4 @@
+
 import { useState, useMemo, useEffect } from 'react';
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -7,7 +8,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, ScatterChart, Scatter, AreaChart, Area, ComposedChart,
   PieChart, Pie, Cell, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
-  Treemap, Legend, RadialBarChart, RadialBar
+  Treemap, Legend, RadialBarChart, RadialBar, Brush, ReferenceLine
 } from 'recharts';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,67 @@ const CHART_TYPES = [
   { type: 'treemap', name: 'Carte arborescente', icon: '🗂️' }
 ];
 
+// Format de date pour l'affichage sur l'axe X
+const formatDateLabel = (dateStr: string) => {
+  try {
+    // Essayer différents formats de date (français et anglais)
+    const date = new Date(dateStr);
+    if (!isNaN(date.getTime())) {
+      return date.toLocaleDateString();
+    }
+    
+    // Essayer de parser les formats français courants
+    const frFormats = [
+      // jj/mm/aaaa
+      { regex: /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/, fn: (m: RegExpMatchArray) => new Date(parseInt(m[3]), parseInt(m[2])-1, parseInt(m[1])) },
+      // jj-mm-aaaa
+      { regex: /^(\d{1,2})-(\d{1,2})-(\d{4})$/, fn: (m: RegExpMatchArray) => new Date(parseInt(m[3]), parseInt(m[2])-1, parseInt(m[1])) },
+      // jj.mm.aaaa
+      { regex: /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/, fn: (m: RegExpMatchArray) => new Date(parseInt(m[3]), parseInt(m[2])-1, parseInt(m[1])) }
+    ];
+    
+    for (const format of frFormats) {
+      const match = dateStr.match(format.regex);
+      if (match) {
+        const parsedDate = format.fn(match);
+        if (!isNaN(parsedDate.getTime())) {
+          return parsedDate.toLocaleDateString();
+        }
+      }
+    }
+    
+    // Si c'est toujours une chaîne de caractères valide, la renvoyer telle quelle
+    return dateStr;
+  } catch (e) {
+    // En cas d'erreur, renvoyer la chaîne initiale
+    return dateStr;
+  }
+};
+
+// Fonction pour détecter si une colonne contient des dates
+const detectDateColumn = (data: any[], columnName: string): boolean => {
+  if (!data || !data.length) return false;
+  
+  // Prendre un échantillon des données
+  const sample = data.slice(0, 10).map(row => row[columnName]);
+  
+  // Vérifier si les valeurs ressemblent à des dates
+  let dateCount = 0;
+  for (const value of sample) {
+    if (!value) continue;
+    
+    // Tester si la valeur ressemble à une date
+    if (/^\d{1,2}[/-\.]\d{1,2}[/-\.]\d{4}$/.test(value) || // jj/mm/aaaa, jj-mm-aaaa, jj.mm.aaaa
+        /^\d{4}[/-\.]\d{1,2}[/-\.]\d{1,2}$/.test(value) || // aaaa/mm/jj, aaaa-mm-jj, aaaa.mm.jj
+        !isNaN(new Date(value).getTime())) {
+      dateCount++;
+    }
+  }
+  
+  // Si plus de 70% des valeurs échantillonnées ressemblent à des dates
+  return dateCount / sample.filter(Boolean).length > 0.7;
+};
+
 const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
   const { toast } = useToast();
   const [data, setData] = useState(initialData);
@@ -63,7 +125,9 @@ const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
       stacked: false,
       normalized: false,
       gridLines: true,
-      colorScheme: 'default'
+      colorScheme: 'default',
+      showBrush: false,
+      dateFormat: 'auto'
     }
   ]);
 
@@ -90,6 +154,12 @@ const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
     return Object.keys(data[0]);
   }, [data]);
 
+  // Détecter automatiquement les colonnes contenant des dates
+  const dateColumns = useMemo(() => {
+    if (!data || data.length === 0) return [];
+    return columns.filter(column => detectDateColumn(data, column));
+  }, [data, columns]);
+
   const getColorScheme = (scheme: string) => {
     switch(scheme) {
       case 'ocean': return ['#1e3a8a', '#2563eb', '#3b82f6', '#60a5fa', '#93c5fd'];
@@ -101,17 +171,61 @@ const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
     }
   };
 
-  const renderChart = ({ chartType, data, xAxis, selectedColumns, isTimeSeries, stacked, normalized, gridLines, colorScheme, showLegend }: any) => {
+  const renderChart = ({ chartType, data, xAxis, selectedColumns, isTimeSeries, stacked, normalized, gridLines, colorScheme, showLegend, showBrush }: any) => {
     if (!data || !xAxis || selectedColumns.length === 0) return null;
 
     const colors = getColorScheme(colorScheme);
-    const chartData = data.map((row: any) => ({
-      x: row[xAxis],
-      ...selectedColumns.reduce((acc: any, col: string) => ({
-        ...acc,
-        [col]: parseFloat(row[col]) || null
-      }), {})
-    }));
+    
+    // Transformer les données pour le graphique
+    let chartData;
+    if (isTimeSeries) {
+      // Tri des données par date si c'est une série temporelle
+      chartData = data
+        .map((row: any) => ({
+          x: row[xAxis],
+          ...selectedColumns.reduce((acc: any, col: string) => ({
+            ...acc,
+            [col]: parseFloat(row[col]) || null
+          }), {})
+        }))
+        .sort((a: any, b: any) => {
+          const dateA = new Date(a.x);
+          const dateB = new Date(b.x);
+          
+          if (!isNaN(dateA.getTime()) && !isNaN(dateB.getTime())) {
+            return dateA.getTime() - dateB.getTime();
+          }
+          
+          // Fallback pour les formats qui ne sont pas automatiquement reconnus
+          try {
+            const partsA = a.x.split(/[\/\-\.]/);
+            const partsB = b.x.split(/[\/\-\.]/);
+            
+            // Essayer de détecter le format français jj/mm/aaaa
+            if (partsA.length === 3 && partsB.length === 3) {
+              // Si le premier nombre est ≤ 31, on suppose que c'est un jour
+              if (parseInt(partsA[0]) <= 31 && parseInt(partsB[0]) <= 31) {
+                const dateA = new Date(parseInt(partsA[2]), parseInt(partsA[1])-1, parseInt(partsA[0]));
+                const dateB = new Date(parseInt(partsB[2]), parseInt(partsB[1])-1, parseInt(partsB[0]));
+                return dateA.getTime() - dateB.getTime();
+              }
+            }
+          } catch (e) {
+            // Ignorer les erreurs de parsing et revenir à la comparaison de chaînes
+          }
+          
+          // Si les dates ne peuvent pas être comparées, comparer les chaînes
+          return a.x.localeCompare(b.x);
+        });
+    } else {
+      chartData = data.map((row: any) => ({
+        x: row[xAxis],
+        ...selectedColumns.reduce((acc: any, col: string) => ({
+          ...acc,
+          [col]: parseFloat(row[col]) || null
+        }), {})
+      }));
+    }
 
     const commonProps = {
       width: 500,
@@ -128,10 +242,21 @@ const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
       ...commonProps,
       children: [
         <CartesianGrid key="grid" strokeDasharray="3 3" stroke={darkMode ? '#374151' : '#e5e7eb'} opacity={0.5} />,
-        <XAxis key="xAxis" dataKey={isTimeSeries ? "date" : "x"} {...commonAxisProps} />,
+        <XAxis 
+          key="xAxis" 
+          dataKey="x" 
+          {...commonAxisProps} 
+          tickFormatter={isTimeSeries ? formatDateLabel : undefined}
+          angle={-45}
+          textAnchor="end"
+          height={60}
+          interval={0}
+          fontSize={10}
+        />,
         <YAxis key="yAxis" {...commonAxisProps} />,
         <Tooltip key="tooltip" contentStyle={{ backgroundColor: darkMode ? '#1f2937' : '#ffffff', borderColor: darkMode ? '#4b5563' : '#e5e7eb' }} />,
-        showLegend && <Legend key="legend" />
+        showLegend && <Legend key="legend" />,
+        showBrush && <Brush key="brush" dataKey="x" height={30} stroke="#8884d8" />
       ]
     };
 
@@ -238,7 +363,7 @@ const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
                 key={col}
                 name={col}
                 data={chartData.map((d: any) => ({
-                  x: d[isTimeSeries ? "date" : "x"],
+                  x: d.x,
                   y: d[col]
                 }))}
                 fill={colors[index % colors.length]}
@@ -372,7 +497,9 @@ const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
       stacked: false,
       normalized: false,
       gridLines: true,
-      colorScheme: 'default'
+      colorScheme: 'default',
+      showBrush: false,
+      dateFormat: 'auto'
     }]);
   };
 
@@ -713,6 +840,15 @@ const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
                                   onCheckedChange={(checked) => updateChart(chart.id, { gridLines: checked })}
                                 />
                               </div>
+                              
+                              <div className="flex items-center justify-between">
+                                <Label htmlFor={`show-brush-${chart.id}`}>Navigation temporelle</Label>
+                                <Switch 
+                                  id={`show-brush-${chart.id}`} 
+                                  checked={chart.showBrush} 
+                                  onCheckedChange={(checked) => updateChart(chart.id, { showBrush: checked })}
+                                />
+                              </div>
                             </div>
                           </DialogContent>
                         </Dialog>
@@ -730,7 +866,14 @@ const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
                     <div className="grid grid-cols-2 gap-4 mb-4">
                       <Select
                         value={chart.xAxis}
-                        onValueChange={(value) => updateChart(chart.id, { xAxis: value })}
+                        onValueChange={(value) => {
+                          // Détecter automatiquement si c'est une série temporelle
+                          const isDateColumn = dateColumns.includes(value);
+                          updateChart(chart.id, { 
+                            xAxis: value,
+                            isTimeSeries: isDateColumn 
+                          });
+                        }}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Axe X" />
@@ -738,7 +881,7 @@ const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
                         <SelectContent>
                           {columns.map(column => (
                             <SelectItem key={column} value={column}>
-                              {column}
+                              {column} {dateColumns.includes(column) ? "📅" : ""}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -801,7 +944,8 @@ const DataVisualization = ({ data: initialData }: DataVisualizationProps) => {
                           normalized: chart.normalized,
                           gridLines: chart.gridLines,
                           colorScheme: chart.colorScheme,
-                          showLegend: chart.showLegend
+                          showLegend: chart.showLegend,
+                          showBrush: chart.showBrush
                         })}
                       </ResponsiveContainer>
                     </div>
