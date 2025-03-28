@@ -89,8 +89,8 @@ const detectDateColumn = (data: any[], columnName: string): boolean => {
     if (!value) continue;
     
     // Tester si la valeur ressemble à une date
-    if (/^\d{1,2}[/-\.]\d{1,2}[/-\.]\d{4}$/.test(value) || // jj/mm/aaaa, jj-mm-aaaa, jj.mm.aaaa
-        /^\d{4}[/-\.]\d{1,2}[/-\.]\d{1,2}$/.test(value) || // aaaa/mm/jj, aaaa-mm-jj, aaaa.mm.jj
+    if (/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}$/.test(value) || // jj/mm/aaaa, jj-mm-aaaa, jj.mm.aaaa
+        /^\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2}$/.test(value) || // aaaa/mm/jj, aaaa-mm-jj, aaaa.mm.jj
         !isNaN(new Date(value).getTime())) {
       dateCount++;
     }
