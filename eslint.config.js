@@ -23,7 +23,31 @@ export default tseslint.config(
         "warn",
         { allowConstantExport: true },
       ],
-      "@typescript-eslint/no-unused-vars": "off",
+      // Règles TypeScript améliorées
+      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-empty-function": "warn",
+      
+      // Règles générales
+      "no-console": "warn",
+      "no-debugger": "error",
+      "prefer-const": "error",
+      "no-var": "error",
+      
+      // Règles de performance
+      "react-hooks/exhaustive-deps": "warn",
+      
+      // Règles de sécurité
+      "no-eval": "error",
+      "no-implied-eval": "error",
+    },
+  },
+  {
+    // Configuration spécifique pour les fichiers de configuration
+    files: ["*.config.{js,ts}", "vite.config.ts", "tailwind.config.ts"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+      "no-console": "off",
     },
   }
 );

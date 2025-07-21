@@ -35,9 +35,12 @@ import {
   TableCell
 } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { safeToNumber, getNumericValues } from '@/utils/typeUtils';
+
+import { DataRow } from '@/types';
 
 interface MachineLearningProps {
-  data: any[] | null;
+  data: DataRow[] | null;
 }
 
 const models = [
@@ -70,6 +73,18 @@ const autoMLConfig = {
 };
 
 const MachineLearning = ({ data }: MachineLearningProps) => {
+  // Debug
+  console.log('=== DEBUG: MachineLearning ===');
+  console.log('Données reçues:', data);
+  console.log('Type:', typeof data);
+  console.log('Est null:', data === null);
+  console.log('Longueur:', data?.length);
+  if (data && data.length > 0) {
+    console.log('Première ligne:', data[0]);
+    console.log('Colonnes:', Object.keys(data[0]));
+  }
+  console.log('=====================================');
+
   const { toast } = useToast();
   const [selectedModel, setSelectedModel] = useState('');
   const [targetColumn, setTargetColumn] = useState('');
@@ -145,7 +160,7 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
   const checkStationarity = () => {
     if (!data || !targetColumn) return;
 
-    const values = data.map(row => parseFloat(row[targetColumn]));
+    const values = getNumericValues(data, targetColumn);
     
     const windowSize = Math.floor(values.length / 4);
     const means = [];
@@ -280,11 +295,11 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
     if (!data || !targetColumn) return;
 
     const correlations: {[key: string]: number} = {};
-    const targetValues = data.map(row => parseFloat(row[targetColumn]));
+    const targetValues = getNumericValues(data, targetColumn);
     
     columns.forEach(column => {
       if (column === targetColumn) return;
-      const columnValues = data.map(row => parseFloat(row[column]));
+      const columnValues = getNumericValues(data, column);
       const correlation = calculatePearsonCorrelation(targetValues, columnValues);
       if (!isNaN(correlation)) {
         correlations[column] = correlation;
@@ -300,7 +315,7 @@ const MachineLearning = ({ data }: MachineLearningProps) => {
     // Récupérer les 30 dernières entrées historiques
     const historicalData = data.slice(-30).map((row, index) => ({
       date: `Day ${data.length - 30 + index + 1}`, // Numérotation plus claire
-      actual: row[targetColumn] ? parseFloat(row[targetColumn]) : null,
+      actual: safeToNumber(row[targetColumn]),
       predicted: null,
       lowerBound: null,
       upperBound: null
